@@ -698,15 +698,46 @@ struct SettingsView: View {
                 .listRowBackground(XboxTheme.surface)
             }
 
+            Button {
+                Task {
+                    await appState.exportAuthToUniversalClipboard()
+                }
+            } label: {
+                HStack {
+                    settingLabel("复制登录凭证（同步到其他设备）", icon: "doc.on.clipboard.fill", color: XboxTheme.emeraldBright)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .listRowBackground(XboxTheme.surface)
+
+            HStack {
+                settingLabel("局域网近场同步", icon: "wave.3.right.circle.fill", color: XboxTheme.emerald)
+                Spacer()
+                Text(appState.authSyncService.isAdvertising ? "已就绪（加密广播中）" : "未启动")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(appState.authSyncService.isAdvertising ? XboxTheme.emeraldBright : .secondary)
+            }
+            .listRowBackground(XboxTheme.surface)
+
+            Text("同一 Wi-Fi 下在 Mac / iPhone / iPad 打开登录页，可直接发现本设备并端到端加密一键同步登录；跨网络也可点上方「复制登录凭证」通过苹果通用剪贴板秒传。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .listRowBackground(XboxTheme.surface)
+
+            #if os(iOS)
             Toggle(isOn: $appState.settings.iCloudKeychainSync) {
                 settingLabel("iCloud 钥匙串同步登录态", icon: "icloud.fill", color: XboxTheme.info)
             }
             .listRowBackground(XboxTheme.surface)
 
-            Text("使用同一 Apple ID 开启 iCloud 钥匙串并用同一账号签名安装时，可跨 iPhone / iPad 自动同步并保留登录状态。")
+            Text("同一 Apple ID 下用相同证书签名安装的 iPhone / iPad 可通过系统 iCloud 钥匙串自动同步登录态。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .listRowBackground(XboxTheme.surface)
+            #endif
 
             HStack {
                 settingLabel("版本信息", icon: "info.circle.fill", color: .secondary)

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 
@@ -5,6 +6,7 @@ import SwiftUI
 final class AppState: ObservableObject {
     let authService = XboxAuthService()
     let gamepadManager = GamepadManager()
+    let authSyncService = AuthSyncService()
 
     @Published var settings: AppSettings {
         didSet {
@@ -38,10 +40,17 @@ final class AppState: ObservableObject {
     @Published var activeStreamTarget: StreamTarget?
     @Published var toastMessage: String?
 
+    private var cancellables = Set<AnyCancellable>()
+
     init() {
         let loaded = AppSettings.load()
         self.settings = loaded
         self.gamepadManager.settings = loaded
+        self.authSyncService.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     func bootstrap() async {
@@ -61,6 +70,7 @@ final class AppState: ObservableObject {
             )
             applyAuthSnapshot(snapshot)
             isAuthenticated = true
+            startNearbyAuthSyncAdvertiser()
             await loadAllData(snapshot: snapshot)
         } catch {
             // Keep login state if only transient network failed, otherwise let user re-login
@@ -88,10 +98,79 @@ final class AppState: ObservableObject {
             )
             applyAuthSnapshot(snapshot)
             isAuthenticated = true
+            startNearbyAuthSyncAdvertiser()
             await loadAllData(snapshot: snapshot)
         } catch {
             consoleError = error.localizedDescription
         }
+    }
+
+    func startNearbyAuthSyncAdvertiser() {
+        guard isAuthenticated else {
+            authSyncService.stopAdvertising()
+            return
+        }
+        let devName = XboxPlatform.localDeviceName
+        let gt = gamertag
+        authSyncService.startAdvertising(deviceName: devName, gamertag: gt) { [weak self] in
+            guard let self else { return nil }
+            guard let token = await self.authService.exportUserToken() else { return nil }
+            let s = await MainActor.run { self.settings }
+            let tag = await MainActor.run { self.gamertag }
+            return ExportableAuthPayload(
+                userToken: token,
+                gamertag: tag.isEmpty ? nil : tag,
+                customIceUrl: s.customIceUrl.isEmpty ? nil : s.customIceUrl,
+                customIceUser: s.customIceUser.isEmpty ? nil : s.customIceUser,
+                customIcePass: s.customIcePass.isEmpty ? nil : s.customIcePass
+            )
+        }
+    }
+
+    func exportAuthToUniversalClipboard() async {
+        guard let token = await authService.exportUserToken() else {
+            showToast("当前没有可导出的登录凭证")
+            return
+        }
+        let payload = ExportableAuthPayload(
+            userToken: token,
+            gamertag: gamertag.isEmpty ? nil : gamertag,
+            customIceUrl: settings.customIceUrl.isEmpty ? nil : settings.customIceUrl,
+            customIceUser: settings.customIceUser.isEmpty ? nil : settings.customIceUser,
+            customIcePass: settings.customIcePass.isEmpty ? nil : settings.customIcePass
+        )
+        guard let encoded = AuthSyncService.encodeTransferString(payload) else {
+            showToast("登录凭证编码失败")
+            return
+        }
+        XboxPlatform.copyToClipboard(encoded)
+        showToast("已复制到通用剪贴板，切到 Mac/iPhone 点「从剪贴板导入登录」即可")
+    }
+
+    func importAuthPayload(_ payload: ExportableAuthPayload) async -> String? {
+        if let ice = payload.customIceUrl, !ice.isEmpty, settings.customIceUrl.isEmpty {
+            settings.customIceUrl = ice
+            settings.customIceUser = payload.customIceUser ?? ""
+            settings.customIcePass = payload.customIcePass ?? ""
+        }
+        await authService.importUserToken(payload.userToken)
+        await completeLogin()
+        if isAuthenticated {
+            showToast("已成功同步 Xbox 登录态")
+            return nil
+        }
+        return consoleError ?? "同步的登录凭证已过期，请重新授权。"
+    }
+
+    func importAuthFromUniversalClipboard() async -> String? {
+        guard let text = XboxPlatform.readClipboard(), !text.isEmpty else {
+            return "剪贴板为空。请先在已登录设备的「设置 → 账号」点击「复制登录凭证」。"
+        }
+        guard let payload = AuthSyncService.decodeTransferString(text) else {
+            return "剪贴板中未检测到 XboxPad 登录凭证。请先在已登录设备点击「复制登录凭证」。"
+        }
+        XboxPlatform.clearClipboard()
+        return await importAuthPayload(payload)
     }
 
     func refreshAllAfterRegionChange() async {
@@ -208,6 +287,7 @@ final class AppState: ObservableObject {
 
     func logout() async {
         activeStreamTarget = nil
+        authSyncService.stopAdvertising()
         await authService.logout()
         isAuthenticated = false
         gamertag = ""
@@ -239,6 +319,7 @@ final class AppState: ObservableObject {
         let tag = await tagTask
         if let tag, !tag.isEmpty {
             gamertag = tag
+            startNearbyAuthSyncAdvertiser()
         }
         _ = await (consolesTask, cloudTask)
     }

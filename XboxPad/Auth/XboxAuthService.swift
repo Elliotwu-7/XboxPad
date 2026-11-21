@@ -101,6 +101,26 @@ actor XboxAuthService {
         return cachedUserToken != nil
     }
 
+    func exportUserToken() -> OAuthUserToken? {
+        if cachedUserToken == nil {
+            cachedUserToken = KeychainStore.load(
+                OAuthUserToken.self,
+                account: userTokenAccount,
+                preferSynchronizable: iCloudSyncEnabled
+            )
+        }
+        return cachedUserToken
+    }
+
+    func importUserToken(_ token: OAuthUserToken) {
+        cachedUserToken = token
+        cachedXblUserToken = nil
+        cachedGssvToken = nil
+        cachedSnapshot = nil
+        KeychainStore.save(token, account: userTokenAccount, synchronizable: iCloudSyncEnabled)
+        KeychainStore.delete(account: snapshotAccount)
+    }
+
     func logout() {
         cachedUserToken = nil
         cachedXblUserToken = nil

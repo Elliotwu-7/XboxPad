@@ -38,6 +38,15 @@ enum XboxPlatform {
         #endif
     }
 
+    @MainActor
+    static var localDeviceName: String {
+        #if os(iOS)
+        return UIDevice.current.name
+        #elseif os(macOS)
+        return Host.current().localizedName ?? "Mac"
+        #endif
+    }
+
     static func copyToClipboard(_ string: String) {
         #if os(iOS)
         UIPasteboard.general.string = string
@@ -45,6 +54,22 @@ enum XboxPlatform {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(string, forType: .string)
+        #endif
+    }
+
+    static func readClipboard() -> String? {
+        #if os(iOS)
+        return UIPasteboard.general.string
+        #elseif os(macOS)
+        return NSPasteboard.general.string(forType: .string)
+        #endif
+    }
+
+    static func clearClipboard() {
+        #if os(iOS)
+        UIPasteboard.general.string = ""
+        #elseif os(macOS)
+        NSPasteboard.general.clearContents()
         #endif
     }
 

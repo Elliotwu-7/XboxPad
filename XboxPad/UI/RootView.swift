@@ -76,6 +76,28 @@ struct RootView: View {
             }
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: appState.toastMessage)
+        .alert(
+            "附近设备请求同步 Xbox 登录",
+            isPresented: Binding(
+                get: { appState.authSyncService.incomingRequest != nil },
+                set: { shown in
+                    if !shown {
+                        appState.authSyncService.incomingRequest?.deny()
+                    }
+                }
+            ),
+            presenting: appState.authSyncService.incomingRequest
+        ) { req in
+            Button("允许同步") {
+                req.approve()
+                appState.showToast("已加密同步登录态至 \(req.requesterDeviceName)")
+            }
+            Button("拒绝", role: .cancel) {
+                req.deny()
+            }
+        } message: { req in
+            Text("「\(req.requesterDeviceName)」请求通过局域网端到端加密同步当前 Xbox 登录状态。\n核对码：\(req.verificationCode)")
+        }
         .xboxStreamPresentation(item: $appState.activeStreamTarget) { target in
             StreamEventContainerView(
                 lockPointer: appState.settings.keyboardMouseMode != .off && appState.gamepadManager.telemetry.mouseConnected

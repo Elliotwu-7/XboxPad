@@ -20,6 +20,7 @@ struct LoginView: View {
     @State private var errorText: String?
     @State private var isRequesting = false
     @State private var isCheckingICloud = false
+    @State private var isSyncingNearby = false
     @State private var copiedCode = false
     @State private var pollTask: Task<Void, Never>?
     @State private var safariURL: URL?
@@ -64,8 +65,12 @@ struct LoginView: View {
                 .ignoresSafeArea()
         }
         #endif
+        .onAppear {
+            appState.authSyncService.startBrowsing()
+        }
         .onDisappear {
             pollTask?.cancel()
+            appState.authSyncService.stopBrowsing()
         }
         .onChange(of: scenePhase) { newPhase in
             if newPhase == .active, deviceCode == nil, !isRequesting, !isCheckingICloud {
@@ -216,6 +221,71 @@ struct LoginView: View {
                 }
             } else {
                 VStack(spacing: 12) {
+                    // Bonjour LAN Nearby One-Tap Sync (works across iPad / iPhone / Mac with zero developer cert!)
+                    if !appState.authSyncService.discoveredPeers.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 7) {
+                                Image(systemName: "wave.3.right.circle.fill")
+                                    .foregroundStyle(XboxTheme.emeraldBright)
+                                Text("发现附近已登录设备 · 一键同步")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(XboxTheme.emeraldBright)
+                            }
+
+                            ForEach(appState.authSyncService.discoveredPeers) { peer in
+                                Button {
+                                    syncFromNearbyPeer(peer)
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "laptopcomputer.and.ipad")
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(XboxTheme.emeraldBright)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(peer.deviceName)
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundStyle(.white)
+                                            if !peer.gamertag.isEmpty {
+                                                Text(peer.gamertag)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                        Spacer()
+                                        if isSyncingNearby && appState.authSyncService.activePeerName == peer.deviceName {
+                                            ProgressView().controlSize(.small)
+                                        } else {
+                                            Text("同步登录")
+                                                .font(.caption.bold())
+                                                .foregroundStyle(.black)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 5)
+                                                .background(XboxTheme.emeraldBright, in: Capsule())
+                                        }
+                                    }
+                                    .padding(11)
+                                    .background(XboxTheme.emerald.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(XboxTheme.emerald.opacity(0.35), lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isRequesting || isSyncingNearby)
+                            }
+
+                            if let code = appState.authSyncService.activeVerificationCode {
+                                HStack(spacing: 8) {
+                                    ProgressView().controlSize(.small).tint(XboxTheme.emeraldBright)
+                                    Text("请在对方设备确认核对码：\(code)")
+                                        .font(.caption.monospacedDigit().weight(.semibold))
+                                        .foregroundStyle(XboxTheme.emeraldBright)
+                                }
+                            }
+                        }
+                        .padding(12)
+                        .background(XboxTheme.bgDeep.opacity(0.65), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+
                     Button {
                         startDeviceCodeLogin()
                     } label: {
@@ -230,8 +300,22 @@ struct LoginView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(XboxPrimaryButtonStyle())
-                    .disabled(isRequesting || isCheckingICloud)
+                    .disabled(isRequesting || isCheckingICloud || isSyncingNearby)
 
+                    Button {
+                        importFromUniversalClipboard()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "doc.on.clipboard.fill")
+                                .foregroundStyle(XboxTheme.emeraldBright)
+                            Text("从剪贴板导入登录（通用剪贴板跨设备）")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(XboxSecondaryButtonStyle())
+                    .disabled(isRequesting || isCheckingICloud || isSyncingNearby)
+
+                    #if os(iOS)
                     Button {
                         tryRestoreFromICloud(manual: true)
                     } label: {
@@ -247,7 +331,8 @@ struct LoginView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(XboxSecondaryButtonStyle())
-                    .disabled(isRequesting || isCheckingICloud)
+                    .disabled(isRequesting || isCheckingICloud || isSyncingNearby)
+                    #endif
                 }
             }
 
@@ -305,6 +390,33 @@ struct LoginView: View {
         }
         .padding(24)
         .xboxCard(cornerRadius: 22)
+    }
+
+    private func syncFromNearbyPeer(_ peer: NearbySyncPeer) {
+        errorText = nil
+        isSyncingNearby = true
+        Task {
+            defer { isSyncingNearby = false }
+            do {
+                let payload = try await appState.authSyncService.requestSync(from: peer)
+                if let err = await appState.importAuthPayload(payload) {
+                    errorText = err
+                }
+            } catch {
+                errorText = error.localizedDescription
+            }
+        }
+    }
+
+    private func importFromUniversalClipboard() {
+        errorText = nil
+        isSyncingNearby = true
+        Task {
+            defer { isSyncingNearby = false }
+            if let err = await appState.importAuthFromUniversalClipboard() {
+                errorText = err
+            }
+        }
     }
 
     private func tryRestoreFromICloud(manual: Bool) {
