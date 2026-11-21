@@ -1,10 +1,19 @@
+#if os(iOS)
 import SafariServices
+#elseif os(macOS)
+import AppKit
+#endif
 import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
+    #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSizeClass
+    private var isRegularLayout: Bool { hSizeClass == .regular }
+    #else
+    private var isRegularLayout: Bool { true }
+    #endif
 
     @State private var deviceCode: DeviceCodeInfo?
     @State private var statusText: String = ""
@@ -22,7 +31,7 @@ struct LoginView: View {
             GeometryReader { proxy in
                 ScrollView(showsIndicators: false) {
                     Group {
-                        if hSizeClass == .regular {
+                        if isRegularLayout {
                             HStack(alignment: .center, spacing: 44) {
                                 brandHeroColumn(alignedLeading: true)
                                     .frame(maxWidth: 400, alignment: .leading)
@@ -46,6 +55,7 @@ struct LoginView: View {
                 }
             }
         }
+        #if os(iOS)
         .sheet(item: Binding(
             get: { safariURL.map { IdentifiableURL(url: $0) } },
             set: { safariURL = $0?.url }
@@ -53,6 +63,7 @@ struct LoginView: View {
             SafariSheetView(url: wrapped.url)
                 .ignoresSafeArea()
         }
+        #endif
         .onDisappear {
             pollTask?.cancel()
         }
@@ -147,7 +158,7 @@ struct LoginView: View {
                             .foregroundStyle(.secondary)
 
                         Button {
-                            UIPasteboard.general.string = code.userCode
+                            XboxPlatform.copyToClipboard(code.userCode)
                             withAnimation { copiedCode = true }
                         } label: {
                             HStack(spacing: 10) {
@@ -172,10 +183,14 @@ struct LoginView: View {
 
                     HStack(spacing: 10) {
                         Button {
-                            UIPasteboard.general.string = code.userCode
+                            XboxPlatform.copyToClipboard(code.userCode)
                             copiedCode = true
                             if let url = URL(string: code.verificationUri) {
+                                #if os(iOS)
                                 safariURL = url
+                                #elseif os(macOS)
+                                NSWorkspace.shared.open(url)
+                                #endif
                             }
                         } label: {
                             Label("复制并打开微软授权页", systemImage: "safari.fill")
@@ -321,7 +336,7 @@ struct LoginView: View {
                 deviceCode = info
                 copiedCode = true
                 statusText = "验证码已自动复制，点击按钮打开微软页面粘贴授权"
-                UIPasteboard.general.string = info.userCode
+                XboxPlatform.copyToClipboard(info.userCode)
 
                 _ = try await appState.authService.pollForDeviceCodeToken(
                     info: info,
@@ -350,6 +365,7 @@ struct LoginView: View {
     }
 }
 
+#if os(iOS)
 private struct IdentifiableURL: Identifiable {
     let id = UUID()
     let url: URL
@@ -364,3 +380,4 @@ private struct SafariSheetView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
 }
+#endif

@@ -3,10 +3,15 @@ import SwiftUI
 struct HomeConsolesView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var gamepadManager: GamepadManager
+    #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSizeClass
+    private var isRegularLayout: Bool { hSizeClass == .regular }
+    #else
+    private var isRegularLayout: Bool { true }
+    #endif
 
     private var columns: [GridItem] {
-        if hSizeClass == .regular {
+        if isRegularLayout {
             return [GridItem(.adaptive(minimum: 330, maximum: 460), spacing: 18)]
         }
         return [GridItem(.flexible(), spacing: 16)]
@@ -42,7 +47,7 @@ struct HomeConsolesView: View {
 
                         minimalFooterTip
                     }
-                    .padding(.horizontal, hSizeClass == .regular ? 24 : 16)
+                    .padding(.horizontal, isRegularLayout ? 24 : 16)
                     .padding(.top, 8)
                     .padding(.bottom, 28)
                 }
@@ -52,7 +57,7 @@ struct HomeConsolesView: View {
             }
             .navigationTitle("主机串流")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         Task { await appState.refreshConsoles() }
                     } label: {

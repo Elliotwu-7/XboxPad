@@ -36,6 +36,7 @@ final class MicrophoneEngine: @unchecked Sendable {
     func requestPermissionAndStart(
         onResult: @escaping @Sendable (Bool, String?) -> Void
     ) {
+        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         switch session.recordPermission {
         case .granted:
@@ -45,7 +46,7 @@ final class MicrophoneEngine: @unchecked Sendable {
                 onResult(err == nil, err)
             }
         case .denied:
-            onResult(false, "请在 iPad「设置 → 隐私与安全性 → 麦克风」中允许 XboxPad 访问麦克风。")
+            onResult(false, "请在系统「设置 → 隐私与安全性 → 麦克风」中允许 XboxPad 访问麦克风。")
         case .undetermined:
             session.requestRecordPermission { [weak self] granted in
                 guard granted, let self else {
@@ -60,6 +61,31 @@ final class MicrophoneEngine: @unchecked Sendable {
         @unknown default:
             onResult(false, "无法获取麦克风权限。")
         }
+        #elseif os(macOS)
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            encodeQueue.async { [weak self] in
+                guard let self else { return }
+                let err = self.startLocked()
+                onResult(err == nil, err)
+            }
+        case .denied, .restricted:
+            onResult(false, "请在「系统设置 → 隐私与安全性 → 麦克风」中允许 XboxPad 访问麦克风。")
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                guard granted, let self else {
+                    onResult(false, "未授予麦克风权限，无法开启语音。")
+                    return
+                }
+                self.encodeQueue.async {
+                    let err = self.startLocked()
+                    onResult(err == nil, err)
+                }
+            }
+        @unknown default:
+            onResult(false, "无法获取麦克风权限。")
+        }
+        #endif
     }
 
     func stop() {
@@ -73,6 +99,7 @@ final class MicrophoneEngine: @unchecked Sendable {
     private func startLocked() -> String? {
         stopLocked()
 
+        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(
@@ -87,6 +114,7 @@ final class MicrophoneEngine: @unchecked Sendable {
             Self.logger.error("mic audio session failed: \(error.localizedDescription, privacy: .public)")
             return "麦克风音频会话启动失败：\(error.localizedDescription)"
         }
+        #endif
 
         guard setupOpusEncoderLocked() else {
             return "无法初始化 Apple Opus 语音编码器。"
@@ -148,12 +176,14 @@ final class MicrophoneEngine: @unchecked Sendable {
         onMicLevel?(0)
 
         if wasCapturing {
-            // Restore pure `.playback` session so Bluetooth A2DP & iPad speakers stay at full stereo fidelity
+            #if os(iOS)
+            // Restore pure `.playback` session so Bluetooth A2DP & speakers stay at full stereo fidelity
             let session = AVAudioSession.sharedInstance()
             try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try? session.setPreferredSampleRate(targetSampleRate)
             try? session.setPreferredIOBufferDuration(0.010)
             try? session.setActive(true)
+            #endif
             Self.logger.info("microphone Opus uplink stopped & playback session restored")
         }
     }

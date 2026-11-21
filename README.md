@@ -5,7 +5,7 @@
 <h1 align="center">XboxPad</h1>
 
 <p align="center">
-  <strong>专为 iPadOS / iOS 打造的纯原生 2K 120Hz Xbox 本地串流（Remote Play）与云游戏（xCloud）客户端</strong>
+  <strong>专为 iPadOS / iPhone (iOS) / macOS 打造的纯原生 2K 120Hz Xbox 本地串流（Remote Play）与云游戏（xCloud）客户端</strong>
 </p>
 
 <p align="center">
@@ -58,14 +58,15 @@
 
 ## 快速安装
 
-### 方式一：SideStore / AltStore 订阅源（推荐）
-- 官网介绍页：**[https://xbox.lynkco.site](https://xbox.lynkco.site)**
-- SideStore 订阅源地址：`https://xbox.lynkco.site/source.json`
+### 方式一：官方下载（iPad / iPhone / macOS）
+- **官网介绍页**：**[https://xbox.lynkco.site](https://xbox.lynkco.site)**
+- **iPad / iPhone（SideStore 订阅源）**：`https://xbox.lynkco.site/source.json`
+- **macOS（Apple Silicon & Intel 通用 `.dmg`）**：直接前往官网下载 `XboxPad-macOS-latest.dmg`，拖入「应用程序」即可使用（首次打开如遇未公证提示，右键点击打开或在终端执行 `xattr -cr /Applications/XboxPad.app`）。
 
-### 方式二：GitHub Actions 自行构建 `.ipa`（无需本机 Xcode）
+### 方式二：GitHub Actions 自行构建 `.ipa` & `.dmg`（无需本机 Xcode）
 1. Fork 本仓库。
-2. 进入你的仓库 → **Actions** → 运行 **Build iPadOS IPA**。
-3. 在构建详情页 **Artifacts** 下载 `XboxPad-unsigned-ipa`，通过 SideStore / AltStore / TrollStore / Sideloadly 安装。
+2. 进入你的仓库 → **Actions** → 运行 **Build Apple Apps (iOS/iPadOS IPA & macOS DMG)**。
+3. 在构建详情页 **Artifacts** 下载纯净开源版 `XboxPad-unsigned-ipa`（iPad/iPhone）与 `XboxPad-macOS-dmg`（macOS）。
 
 ### 方式三：本机 Xcode 真机编译
 前提：macOS 已安装 Xcode、Rust（`rustup target add aarch64-apple-ios aarch64-apple-ios-sim`）与 XcodeGen（`brew install xcodegen`）。

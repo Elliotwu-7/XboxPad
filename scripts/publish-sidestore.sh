@@ -8,7 +8,8 @@ if [ -f "$ROOT_DIR/.env.deploy.local" ]; then
 fi
 
 IPA_PATH="${1:-$ROOT_DIR/build/XboxPad-unsigned.ipa}"
-CHANGELOG="${2:-原生 iPadOS 低延迟 Xbox 串流与 xCloud 云游戏：2K 1440p 高码率、MetalFX 超分、120Hz 双向光流补帧、EDR Auto-HDR、多手柄与键鼠支持。}"
+CHANGELOG="${2:-原生 Apple 全平台低延迟 Xbox 串流与 xCloud 云游戏：支持 iPad / iPhone / macOS，2K 1440p 高码率、MetalFX 超分、120Hz 双向光流补帧、EDR Auto-HDR、多手柄与键鼠支持。}"
+MACOS_DMG_PATH="${3:-${XBOXPAD_MACOS_DMG:-}}"
 ICON_PATH="$ROOT_DIR/XboxPad/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
 
 SSH_KEY="${XBOXPAD_DEPLOY_KEY:-}"
@@ -110,6 +111,11 @@ UPLOAD_FILES=("$IPA_PATH" "$ICON_PATH" "$TMP_DIR/source.json")
 if [ -f "$ROOT_DIR/docs/web/index.html" ]; then
   UPLOAD_FILES+=("$ROOT_DIR/docs/web/index.html")
 fi
+DMG_FILENAME=""
+if [ -n "$MACOS_DMG_PATH" ] && [ -f "$MACOS_DMG_PATH" ]; then
+  DMG_FILENAME="XboxPad-${VERSION}-macOS.dmg"
+  UPLOAD_FILES+=("$MACOS_DMG_PATH")
+fi
 scp -i "$SSH_KEY" -o StrictHostKeyChecking=no \
   "${UPLOAD_FILES[@]}" \
   "${REMOTE_HOST}:${REMOTE_DIR}/"
@@ -123,7 +129,13 @@ ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$REMOTE_HOST" "
   [ -f index.html ] && chmod 644 index.html || true
   ln -sf '${IPA_FILENAME}' XboxPad-latest.ipa
   # Keep at most 3 recent versioned IPAs
-  ls -t XboxPad-*.ipa | grep -v 'XboxPad-latest.ipa' | tail -n +4 | xargs -r rm -f
+  ls -t XboxPad-*.ipa | grep -v 'XboxPad-latest.ipa' | grep -v 'macOS' | tail -n +4 | xargs -r rm -f
+  if [ -n '${DMG_FILENAME}' ] && [ -f XboxPad-macOS.dmg ]; then
+    mv -f XboxPad-macOS.dmg '${DMG_FILENAME}'
+    chmod 644 '${DMG_FILENAME}'
+    ln -sf '${DMG_FILENAME}' XboxPad-macOS-latest.dmg
+    ls -t XboxPad-*-macOS.dmg | tail -n +4 | xargs -r rm -f
+  fi
   ls -lh '${REMOTE_DIR}'
 "
 
@@ -131,10 +143,17 @@ if [ -n "$SYNC_DIR" ] && [ -d "$SYNC_DIR" ] && ! [ "$IPA_PATH" -ef "$SYNC_DIR/Xb
   cp -f "$IPA_PATH" "$SYNC_DIR/XboxPad-unsigned.ipa"
   echo "Synced copy to $SYNC_DIR/XboxPad-unsigned.ipa"
 fi
+if [ -n "$SYNC_DIR" ] && [ -d "$SYNC_DIR" ] && [ -n "$MACOS_DMG_PATH" ] && [ -f "$MACOS_DMG_PATH" ]; then
+  cp -f "$MACOS_DMG_PATH" "$SYNC_DIR/XboxPad-macOS.dmg"
+  echo "Synced macOS DMG to $SYNC_DIR/XboxPad-macOS.dmg"
+fi
 
 echo "Verifying live HTTPS SideStore source..."
 curl -fsSI "${BASE_URL}/" | head -n 6
 curl -fsSI "${BASE_URL}/source.json" | head -n 6
 curl -fsSI "${BASE_URL}/${IPA_FILENAME}" | head -n 6
 curl -fsSI "${BASE_URL}/icon.png" | head -n 6
+if [ -n "$DMG_FILENAME" ]; then
+  curl -fsSI "${BASE_URL}/XboxPad-macOS-latest.dmg" | head -n 6
+fi
 echo "DONE: SideStore Source URL = ${BASE_URL} (or ${BASE_URL}/source.json)"

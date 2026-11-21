@@ -1,9 +1,13 @@
+#if os(iOS)
 import CoreMotion
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 import Foundation
 import GameController
 import os
 import QuartzCore
-import UIKit
 import XboxPadNanoFFI
 
 /// Native iPadOS multi-controller + keyboard/mouse manager:
@@ -84,7 +88,9 @@ final class GamepadManager: ObservableObject {
     var onToggleOverlayRequested: (() -> Void)?
 
     private let inputQueue = DispatchQueue(label: "com.elliot.xboxpad.gamepad.input", qos: .userInteractive)
+    #if os(iOS)
     private let motionManager = CMMotionManager()
+    #endif
     private let motionQueue: OperationQueue = {
         let q = OperationQueue()
         q.name = "com.elliot.xboxpad.gyro"
@@ -161,7 +167,9 @@ final class GamepadManager: ObservableObject {
         for obs in observers {
             NotificationCenter.default.removeObserver(obs)
         }
+        #if os(iOS)
         motionManager.stopDeviceMotionUpdates()
+        #endif
         runtime.pollTimer?.cancel()
     }
 
@@ -206,12 +214,15 @@ final class GamepadManager: ObservableObject {
         let wantsGyro = isStreaming && settings.gyroAimMode != .off
         if let primary = connectedControllers.first, let motion = primary.motion {
             motion.sensorsActive = wantsGyro
+            #if os(iOS)
             if motionManager.isDeviceMotionActive {
                 motionManager.stopDeviceMotionUpdates()
             }
+            #endif
             return
         }
 
+        #if os(iOS)
         if wantsGyro && motionManager.isDeviceMotionAvailable {
             if !motionManager.isDeviceMotionActive {
                 motionManager.deviceMotionUpdateInterval = 1.0 / 120.0
@@ -233,6 +244,7 @@ final class GamepadManager: ObservableObject {
                 runtime.deviceGyroY = 0
             }
         }
+        #endif
     }
 
     func setStreamingActive(_ active: Bool) {
@@ -365,8 +377,13 @@ final class GamepadManager: ObservableObject {
                 }
             )
         }
+        #if os(iOS)
+        let activeNotificationName = UIApplication.didBecomeActiveNotification
+        #elseif os(macOS)
+        let activeNotificationName = NSApplication.didBecomeActiveNotification
+        #endif
         observers.append(
-            nc.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            nc.addObserver(forName: activeNotificationName, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in
                     guard let self else { return }
                     for controller in self.connectedControllers {

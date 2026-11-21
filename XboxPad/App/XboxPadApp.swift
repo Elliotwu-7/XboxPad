@@ -13,5 +13,8 @@ struct XboxPadApp: App {
                     await appState.bootstrap()
                 }
         }
+        #if os(macOS)
+        .defaultSize(width: 1200, height: 780)
+        #endif
     }
 }

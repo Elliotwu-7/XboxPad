@@ -2,6 +2,7 @@ import CoreHaptics
 import Foundation
 import GameController
 import os
+import QuartzCore
 
 /// 4-channel native CoreHaptics rumble engine for iPadOS game controllers:
 /// - Left Handle (strong low-frequency motor)
@@ -270,6 +271,45 @@ final class HapticsEngine: @unchecked Sendable {
         teardownLocked()
         boundController = controller
         guard let controller, let haptics = controller.haptics else {
+            #if os(iOS)
+            // On iPhone with touch virtual gamepad (no external controller connected),
+            // fall back to iPhone's built-in Taptic Engine via CoreHaptics!
+            if controller == nil && CHHapticEngine.capabilitiesForHardware().supportsHaptics {
+                if let phoneEngine = try? CHHapticEngine() {
+                    phoneEngine.isAutoShutdownEnabled = false
+                    let state = ChannelState(locality: .default, sharpness: 0.45, engine: phoneEngine)
+                    phoneEngine.stoppedHandler = { [weak self, weak state] _ in
+                        self?.queue.async {
+                            state?.isEngineStarted = false
+                            state?.isPlayerRunning = false
+                            state?.player = nil
+                            state?.currentIntensity = -1
+                        }
+                    }
+                    phoneEngine.resetHandler = { [weak self, weak state] in
+                        self?.queue.async {
+                            guard let state else { return }
+                            state.isEngineStarted = false
+                            state.isPlayerRunning = false
+                            state.player = nil
+                            state.currentIntensity = -1
+                            try? state.engine.start()
+                            state.isEngineStarted = true
+                        }
+                    }
+                    channels[.default] = state
+                    channels[.leftHandle] = state
+                    channels[.rightHandle] = state
+                    supportsHandleRumble = true
+                    supportsTriggerRumble = false
+                    if (try? phoneEngine.start()) != nil {
+                        state.isEngineStarted = true
+                    }
+                    Self.logger.info("haptics bound to iPhone Taptic Engine fallback")
+                    return
+                }
+            }
+            #endif
             supportsHandleRumble = false
             supportsTriggerRumble = false
             Self.logger.info("haptics unbound (no controller or no haptics)")

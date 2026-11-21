@@ -327,7 +327,7 @@ struct SettingsView: View {
                     Text(mode.label).tag(mode)
                 }
             } label: {
-                let headroom = UIScreen.main.potentialEDRHeadroom
+                let headroom = XboxPlatform.potentialEDRHeadroom
                 HStack(spacing: 8) {
                     settingLabel("HDR / EDR 调色增强", icon: "sun.max.fill", color: .orange)
                     if headroom > 1.05 {
@@ -590,9 +590,7 @@ struct SettingsView: View {
     }
 
     private func openControllerHomeButtonSettings() {
-        if let url = URL(string: UIApplication.openSettingsURLString) {
-            UIApplication.shared.open(url)
-        }
+        XboxPlatform.openSystemControllerSettings()
     }
 
     // MARK: - Region & Network
@@ -665,11 +663,11 @@ struct SettingsView: View {
 
             DisclosureGroup(NanoStreamSession.hasBuiltInRelayCluster ? "覆盖自定义 STUN / TURN 服务器（可选）" : "自定义 STUN / TURN 中继服务器（可选）") {
                 TextField("例如 turn:your-server.example:3478（逗号分隔多个）", text: $appState.settings.customIceUrl)
-                    .textInputAutocapitalization(.never)
+                    .xboxNoAutocapitalization()
                     .autocorrectionDisabled()
                 if !appState.settings.customIceUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     TextField("用户名（纯 STUN 可留空）", text: $appState.settings.customIceUser)
-                        .textInputAutocapitalization(.never)
+                        .xboxNoAutocapitalization()
                         .autocorrectionDisabled()
                     SecureField("密码 / Credential（纯 STUN 可留空）", text: $appState.settings.customIcePass)
                 }

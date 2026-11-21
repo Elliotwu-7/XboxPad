@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 import XboxPadNanoFFI
 
 struct StreamPlayerView: View {
@@ -38,12 +42,16 @@ struct StreamPlayerView: View {
     }
 
     private var shouldShowVirtualGamepad: Bool {
+        #if os(macOS)
+        return false
+        #else
         guard case .streaming = session.connectionState else { return false }
         let hasHardwareInput = appState.gamepadManager.telemetry.connected
             || (appState.settings.keyboardMouseMode != .off
                 && (appState.gamepadManager.telemetry.keyboardConnected || appState.gamepadManager.telemetry.mouseConnected))
         return manualVirtualGamepad
             || (appState.settings.showVirtualControlsWhenNoGamepad && !hasHardwareInput)
+        #endif
     }
 
     private func closeOverlayBar() {
@@ -185,14 +193,39 @@ struct StreamPlayerView: View {
             }
 
             connectionOverlay
+
+            #if os(macOS)
+            // macOS native keyboard shortcuts: ⌘F toggles window fullscreen, ⌥⌘M toggles overlay bar
+            Group {
+                Button("") {
+                    XboxPlatform.toggleWindowFullScreen()
+                }
+                .keyboardShortcut("f", modifiers: .command)
+
+                Button("") {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                        if showOverlayBar {
+                            showMoreDrawer = false
+                            showOverlayBar = false
+                        } else {
+                            showOverlayBar = true
+                        }
+                    }
+                }
+                .keyboardShortcut("m", modifiers: [.command, .option])
+            }
+            .frame(width: 0, height: 0)
+            .opacity(0.001)
+            .allowsHitTesting(false)
+            #endif
         }
-        .statusBarHidden(true)
-        .persistentSystemOverlays(.hidden)
+        .xboxHideSystemChrome()
         .sheet(isPresented: $showCastSheet) {
             castControlSheet
         }
         .onAppear {
-            UIApplication.shared.isIdleTimerDisabled = true
+            XboxPlatform.setIdleSleepDisabled(true)
+            XboxPlatform.setPreferredLandscapeForStreaming(true)
             appState.gamepadManager.onToggleOverlayRequested = {
                 withAnimation(.spring(response: 0.26, dampingFraction: 0.86)) {
                     if showOverlayBar {
@@ -212,7 +245,8 @@ struct StreamPlayerView: View {
             session.start()
         }
         .onDisappear {
-            UIApplication.shared.isIdleTimerDisabled = false
+            XboxPlatform.setIdleSleepDisabled(false)
+            XboxPlatform.setPreferredLandscapeForStreaming(false)
             appState.gamepadManager.onToggleOverlayRequested = nil
             externalDisplay.unbindStream(renderer: session.videoRenderer)
             session.stop()
@@ -347,15 +381,17 @@ struct StreamPlayerView: View {
             }
             .buttonStyle(.plain)
 
-            Text(compactStreamTitle)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+            if !XboxPlatform.isPhone {
+                Text(compactStreamTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
 
-            Rectangle()
-                .fill(Color.white.opacity(0.18))
-                .frame(width: 1, height: 18)
+                Rectangle()
+                    .fill(Color.white.opacity(0.18))
+                    .frame(width: 1, height: 18)
+            }
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 7) {
@@ -401,6 +437,16 @@ struct StreamPlayerView: View {
                         cycleHDRToneMode()
                     }
 
+                    #if os(macOS)
+                    overlayChipButton(
+                        title: "全屏",
+                        systemImage: "arrow.up.left.and.arrow.down.right",
+                        active: false,
+                        activeColor: XboxTheme.info
+                    ) {
+                        XboxPlatform.toggleWindowFullScreen()
+                    }
+                    #else
                     overlayChipButton(
                         title: externalDisplay.isRenderingExternally
                             ? "外接全屏"
@@ -412,6 +458,7 @@ struct StreamPlayerView: View {
                         externalDisplay.refreshScreenState()
                         showCastSheet = true
                     }
+                    #endif
 
                     overlayChipButton(
                         title: session.isMuted ? "静音" : "声音",
@@ -744,7 +791,7 @@ struct StreamPlayerView: View {
                 .scrollContentBackground(.hidden)
             }
             .navigationTitle("投屏与外接显示器")
-            .navigationBarTitleDisplayMode(.inline)
+            .xboxInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") {

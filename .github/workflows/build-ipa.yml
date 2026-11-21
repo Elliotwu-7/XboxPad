@@ -1,4 +1,4 @@
-name: Build iPadOS IPA
+name: Build Apple Apps (iOS/iPadOS IPA & macOS DMG)
 
 on:
   push:
@@ -16,6 +16,7 @@ on:
 
 jobs:
   build-ipa:
+    name: Build iOS/iPadOS IPA
     runs-on: macos-26
     timeout-minutes: 45
 
@@ -42,9 +43,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             RustCore/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('RustCore/Cargo.lock', 'RustCore/Cargo.toml') }}
+          key: ${{ runner.os }}-ios-cargo-${{ hashFiles('RustCore/Cargo.lock', 'RustCore/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-ios-cargo-
           save-always: true
 
       - name: Run RustCore unit tests
@@ -65,7 +66,7 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
-      - name: Build unsigned iPadOS Release app
+      - name: Build unsigned iOS/iPadOS Release app
         run: |
           xcodebuild \
             -project XboxPad.xcodeproj \
@@ -94,4 +95,89 @@ jobs:
         with:
           name: XboxPad-unsigned-ipa
           path: build/XboxPad-unsigned.ipa
+          retention-days: 30
+
+  build-macos-dmg:
+    name: Build macOS Universal DMG
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-path
+
+      - name: Setup Rust toolchain (macOS arm64 + x86_64)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            RustCore/target/
+          key: ${{ runner.os }}-macos-cargo-${{ hashFiles('RustCore/Cargo.lock', 'RustCore/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-macos-cargo-
+          save-always: true
+
+      - name: Build RustCore XCFramework (macOS Universal)
+        env:
+          XBOXPAD_BUILTIN_ICE_NODES: ${{ github.event_name == 'workflow_dispatch' && inputs.include_builtin_relay && secrets.XBOXPAD_BUILTIN_ICE_NODES || '' }}
+          XBOXPAD_BUILTIN_TURN_USER: ${{ github.event_name == 'workflow_dispatch' && inputs.include_builtin_relay && secrets.XBOXPAD_BUILTIN_TURN_USER || '' }}
+          XBOXPAD_BUILTIN_TURN_PASS: ${{ github.event_name == 'workflow_dispatch' && inputs.include_builtin_relay && secrets.XBOXPAD_BUILTIN_TURN_PASS || '' }}
+        run: |
+          chmod +x scripts/build-rust-ios.sh
+          ./scripts/build-rust-ios.sh --macos-only
+
+      - name: Install XcodeGen and generate XboxPad.xcodeproj
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build macOS Universal Release app
+        run: |
+          xcodebuild \
+            -project XboxPad.xcodeproj \
+            -scheme XboxPad-macOS \
+            -configuration Release \
+            -sdk macosx \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath build/DerivedDataMac \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            build
+
+      - name: Ad-hoc sign and package XboxPad-macOS.dmg
+        run: |
+          APP_PATH="build/DerivedDataMac/Build/Products/Release/XboxPad.app"
+          test -d "$APP_PATH"
+          codesign --force --deep --sign - "$APP_PATH"
+          mkdir -p build/dmg-staging
+          cp -R "$APP_PATH" build/dmg-staging/
+          ln -s /Applications build/dmg-staging/Applications
+          hdiutil create \
+            -volname "XboxPad" \
+            -srcfolder build/dmg-staging \
+            -ov \
+            -format UDZO \
+            build/XboxPad-macOS.dmg
+          ls -lh build/XboxPad-macOS.dmg
+
+      - name: Upload macOS DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XboxPad-macOS-dmg
+          path: build/XboxPad-macOS.dmg
           retention-days: 30

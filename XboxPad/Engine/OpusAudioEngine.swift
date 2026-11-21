@@ -267,6 +267,7 @@ final class OpusAudioEngine: @unchecked Sendable {
     }
 
     private func configureAudioSession(sampleRate: Double) {
+        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         // NOTE: Do NOT pass `.allowBluetoothA2DP` with `.playback` — Apple rejects it with paramErr (-50).
         // `.playback` automatically routes to Bluetooth A2DP headphones & AirPods.
@@ -276,12 +277,14 @@ final class OpusAudioEngine: @unchecked Sendable {
             try? session.setCategory(.playback)
         }
         try? session.setPreferredSampleRate(sampleRate)
-        // 10ms hardware I/O buffer balances snappy sync with zero real-time callback jitter on iPadOS
+        // 10ms hardware I/O buffer balances snappy sync with zero real-time callback jitter on iOS/iPadOS
         try? session.setPreferredIOBufferDuration(0.010)
         try? session.setActive(true)
+        #endif
     }
 
     private func observeAudioSessionNotifications(engine: AVAudioEngine) {
+        #if os(iOS)
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance(),
@@ -303,6 +306,7 @@ final class OpusAudioEngine: @unchecked Sendable {
             guard let self else { return }
             self.ensureRunning(sampleRate: self.outputSampleRate, channels: self.inputChannels)
         }
+        #endif
 
         // Handles AirPods / Bluetooth / USB-C DAC hot-swaps where AVAudioEngine halts its graph.
         configChangeObserver = NotificationCenter.default.addObserver(

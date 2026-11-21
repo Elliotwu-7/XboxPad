@@ -2,12 +2,17 @@ import SwiftUI
 
 struct CloudGamesView: View {
     @EnvironmentObject var appState: AppState
+    #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSizeClass
+    private var isRegularLayout: Bool { hSizeClass == .regular }
+    #else
+    private var isRegularLayout: Bool { true }
+    #endif
     @State private var searchText = ""
     @State private var filterRecentOnly = false
 
     private var columns: [GridItem] {
-        if hSizeClass == .regular {
+        if isRegularLayout {
             return [GridItem(.adaptive(minimum: 185, maximum: 230), spacing: 16)]
         }
         return [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 14)]
@@ -69,7 +74,7 @@ struct CloudGamesView: View {
                                     gameCard(game)
                                 }
                             }
-                            .padding(.horizontal, hSizeClass == .regular ? 24 : 16)
+                            .padding(.horizontal, isRegularLayout ? 24 : 16)
                             .padding(.top, 8)
                             .padding(.bottom, 28)
                         }
@@ -82,7 +87,7 @@ struct CloudGamesView: View {
             .navigationTitle("xCloud 云游戏")
             .searchable(text: $searchText, prompt: "搜索游戏名称或发行商")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         Task { await appState.refreshCloudGames() }
                     } label: {
@@ -151,7 +156,7 @@ struct CloudGamesView: View {
                 .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.8))
             }
         }
-        .padding(.horizontal, hSizeClass == .regular ? 24 : 16)
+        .padding(.horizontal, isRegularLayout ? 24 : 16)
         .padding(.vertical, 10)
     }
 

@@ -1,11 +1,16 @@
 import GameController
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct RootView: View {
     @EnvironmentObject var appState: AppState
 
     init() {
+        #if os(iOS)
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor(red: 0.055, green: 0.07, blue: 0.09, alpha: 0.96)
@@ -19,6 +24,7 @@ struct RootView: View {
         navAppearance.titleTextAttributes = [.foregroundColor: UIColor.white]
         UINavigationBar.appearance().standardAppearance = navAppearance
         UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
+        #endif
     }
 
     var body: some View {
@@ -70,7 +76,7 @@ struct RootView: View {
             }
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: appState.toastMessage)
-        .fullScreenCover(item: $appState.activeStreamTarget) { target in
+        .xboxStreamPresentation(item: $appState.activeStreamTarget) { target in
             StreamEventContainerView(
                 lockPointer: appState.settings.keyboardMouseMode != .off && appState.gamepadManager.telemetry.mouseConnected
             ) {
@@ -112,8 +118,9 @@ struct RootView: View {
     }
 }
 
+#if os(iOS)
 /// Real `GCEventViewController` container hosting the entire streaming UI with
-/// `controllerUserInteractionEnabled = false`, matching OneCast / Moonlight so iPadOS
+/// `controllerUserInteractionEnabled = false`, matching OneCast / Moonlight so iOS/iPadOS
 /// routes raw controller inputs (including overridden Home/Guide presses) directly to XboxPad.
 private struct StreamEventContainerView<Content: View>: UIViewControllerRepresentable {
     let lockPointer: Bool
@@ -151,6 +158,7 @@ private final class StreamGCEventViewController<Content: View>: GCEventViewContr
 
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
     override var prefersPointerLocked: Bool { shouldLockPointer }
 
     func setPointerLocked(_ locked: Bool) {
@@ -175,9 +183,71 @@ private final class StreamGCEventViewController<Content: View>: GCEventViewContr
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         controllerUserInteractionEnabled = false
+        setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
     }
 
     func updateRootView(_ rootView: Content) {
         hostingController.rootView = rootView
     }
 }
+#elseif os(macOS)
+/// Native macOS `GCEventViewController` container with `controllerUserInteractionEnabled = false`
+/// so controllers & Home button route directly to XboxPad without triggering macOS UI navigation.
+private struct StreamEventContainerView<Content: View>: NSViewControllerRepresentable {
+    let lockPointer: Bool
+    let content: Content
+
+    init(lockPointer: Bool = false, @ViewBuilder content: () -> Content) {
+        self.lockPointer = lockPointer
+        self.content = content()
+    }
+
+    func makeNSViewController(context: Context) -> StreamGCEventNSViewController<Content> {
+        StreamGCEventNSViewController(rootView: content)
+    }
+
+    func updateNSViewController(_ nsViewController: StreamGCEventNSViewController<Content>, context: Context) {
+        nsViewController.controllerUserInteractionEnabled = false
+        nsViewController.updateRootView(content)
+    }
+}
+
+private final class StreamGCEventNSViewController<Content: View>: GCEventViewController {
+    private let hostingController: NSHostingController<Content>
+
+    init(rootView: Content) {
+        self.hostingController = NSHostingController(rootView: rootView)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() {
+        let root = NSView()
+        root.wantsLayer = true
+        root.layer?.backgroundColor = NSColor.black.cgColor
+        self.view = root
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        controllerUserInteractionEnabled = false
+
+        addChild(hostingController)
+        hostingController.view.frame = view.bounds
+        hostingController.view.autoresizingMask = [.width, .height]
+        view.addSubview(hostingController.view)
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        controllerUserInteractionEnabled = false
+    }
+
+    func updateRootView(_ rootView: Content) {
+        hostingController.rootView = rootView
+    }
+}
+#endif

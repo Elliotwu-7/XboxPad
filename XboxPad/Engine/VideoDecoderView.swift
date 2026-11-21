@@ -6,7 +6,11 @@ import MetalFX
 import os
 import QuartzCore
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 import VideoToolbox
 
 enum MetalFXSupport {
@@ -285,7 +289,7 @@ final class H264StreamRenderer: @unchecked Sendable {
 
     /// Captures a full-resolution lossless screenshot from the newest decoded video frame
     /// without stalling the 120Hz render pipeline.
-    func captureCurrentFrameImage(completion: @escaping @Sendable (UIImage?) -> Void) {
+    func captureCurrentFrameImage(completion: @escaping @Sendable (CGImage?) -> Void) {
         os_unfair_lock_lock(&frameLock)
         let pb = latestPixelBuffer
         os_unfair_lock_unlock(&frameLock)
@@ -307,11 +311,7 @@ final class H264StreamRenderer: @unchecked Sendable {
                 width: CVPixelBufferGetWidth(pbBox.pb),
                 height: CVPixelBufferGetHeight(pbBox.pb)
             )
-            if let cgImage = self.screenshotCIContext.createCGImage(ciImage, from: rect) {
-                completion(UIImage(cgImage: cgImage))
-            } else {
-                completion(nil)
-            }
+            completion(self.screenshotCIContext.createCGImage(ciImage, from: rect))
         }
     }
 
@@ -598,15 +598,25 @@ final class H264StreamRenderer: @unchecked Sendable {
     }
 
     private func setupAppLifecycleObservers() {
+        #if os(iOS)
+        let resignName = UIApplication.willResignActiveNotification
+        let activeName = UIApplication.didBecomeActiveNotification
+        #elseif os(macOS)
+        // On macOS, keep rendering even when another window briefly takes focus;
+        // only track app hide/unhide so windowed multi-tasking never freezes video!
+        let resignName = NSApplication.didHideNotification
+        let activeName = NSApplication.didUnhideNotification
+        #endif
+
         backgroundObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.willResignActiveNotification,
+            forName: resignName,
             object: nil,
             queue: nil
         ) { [weak self] _ in
             self?.setBackgrounded(true)
         }
         foregroundObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didBecomeActiveNotification,
+            forName: activeName,
             object: nil,
             queue: nil
         ) { [weak self] _ in
@@ -1761,6 +1771,7 @@ private final class UncheckedPixelBufferBox: @unchecked Sendable {
     init(pb: CVPixelBuffer) { self.pb = pb }
 }
 
+#if os(iOS)
 final class VideoDisplayUIView: UIView {
     override class var layerClass: AnyClass {
         CAMetalLayer.self
@@ -1842,7 +1853,7 @@ final class VideoDisplayUIView: UIView {
         }
     }
 
-    /// Keep iPad Pro ProMotion (or external HDMI/USB-C display) locked to the screen's native VSync.
+    /// Keep iPad Pro / iPhone Pro ProMotion (or external HDMI/USB-C display) locked to native VSync.
     private func startProMotionLock() {
         stopProMotionLock()
         let screen = window?.screen ?? UIScreen.main
@@ -1899,3 +1910,142 @@ struct VideoDecoderView: UIViewRepresentable {
         uiView.onDisplayTick = nil
     }
 }
+#elseif os(macOS)
+final class VideoDisplayNSView: NSView {
+    let metalLayer = CAMetalLayer()
+
+    var onDrawableSizeChanged: (() -> Void)?
+    var onDisplayTick: ((CFTimeInterval, CFTimeInterval, Float) -> Void)?
+    private var proMotionLink: CADisplayLink?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .duringViewResize
+
+        metalLayer.device = MTLCreateSystemDefaultDevice()
+        metalLayer.pixelFormat = .rgba16Float
+        if let edrSpace = CGColorSpace(name: CGColorSpace.extendedLinearSRGB) {
+            metalLayer.colorspace = edrSpace
+        }
+        metalLayer.wantsExtendedDynamicRangeContent = false
+        metalLayer.framebufferOnly = true
+        metalLayer.presentsWithTransaction = false
+        metalLayer.maximumDrawableCount = 3
+        metalLayer.isOpaque = true
+        metalLayer.backgroundColor = NSColor.black.cgColor
+        layer = metalLayer
+    }
+
+    override func makeBackingLayer() -> CALayer {
+        metalLayer
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        proMotionLink?.invalidate()
+    }
+
+    func setEDREnabled(_ enabled: Bool) {
+        if metalLayer.wantsExtendedDynamicRangeContent != enabled {
+            metalLayer.wantsExtendedDynamicRangeContent = enabled
+        }
+    }
+
+    var liveEDRHeadroom: Float {
+        let screen = window?.screen ?? NSScreen.main
+        return Float(screen?.maximumExtendedDynamicRangeColorComponentValue ?? 1.0)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            updateDrawableSize()
+            startProMotionLock()
+        } else {
+            stopProMotionLock()
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        updateDrawableSize()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updateDrawableSize()
+    }
+
+    private func updateDrawableSize() {
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        metalLayer.contentsScale = scale
+        let newSize = CGSize(
+            width: max(floor(bounds.width * scale), 1),
+            height: max(floor(bounds.height * scale), 1)
+        )
+        if metalLayer.drawableSize != newSize {
+            metalLayer.drawableSize = newSize
+            onDrawableSizeChanged?()
+        }
+    }
+
+    private func startProMotionLock() {
+        stopProMotionLock()
+        let screen = window?.screen ?? NSScreen.main
+        let maxHz = Float(max(screen?.maximumFramesPerSecond ?? 60, 60))
+        let link = self.displayLink(target: self, selector: #selector(proMotionTick(_:)))
+        if maxHz >= 100 {
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: maxHz, preferred: maxHz)
+        } else {
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: maxHz, preferred: maxHz)
+        }
+        link.add(to: .main, forMode: .common)
+        proMotionLink = link
+    }
+
+    private func stopProMotionLock() {
+        proMotionLink?.invalidate()
+        proMotionLink = nil
+    }
+
+    @objc private func proMotionTick(_ link: CADisplayLink) {
+        onDisplayTick?(link.timestamp, link.targetTimestamp, liveEDRHeadroom)
+    }
+}
+
+struct VideoDecoderView: NSViewRepresentable {
+    let renderer: H264StreamRenderer
+    let aspectMode: VideoAspectMode
+    let hdrToneMode: VideoHDRToneMode
+
+    func makeNSView(context: Context) -> VideoDisplayNSView {
+        let view = VideoDisplayNSView()
+        view.setEDREnabled(hdrToneMode != .off)
+        view.onDrawableSizeChanged = { [weak renderer] in
+            renderer?.handleDrawableSizeChanged()
+        }
+        view.onDisplayTick = { [weak renderer] ts, targetTs, headroom in
+            renderer?.updateEDRHeadroom(headroom)
+            renderer?.handleDisplayTick(now: ts, targetTimestamp: targetTs)
+        }
+        renderer.updateHDRToneMode(hdrToneMode)
+        renderer.attach(metalLayer: view.metalLayer, aspectMode: aspectMode)
+        return view
+    }
+
+    func updateNSView(_ nsView: VideoDisplayNSView, context: Context) {
+        nsView.setEDREnabled(hdrToneMode != .off)
+        renderer.updateAspectMode(aspectMode)
+        renderer.updateHDRToneMode(hdrToneMode)
+    }
+
+    static func dismantleNSView(_ nsView: VideoDisplayNSView, coordinator: ()) {
+        nsView.onDrawableSizeChanged = nil
+        nsView.onDisplayTick = nil
+    }
+}
+#endif

@@ -1,11 +1,12 @@
 import AVKit
 import SwiftUI
+#if os(iOS)
 import UIKit
 
 /// Manages external displays (USB-C / HDMI / AirPlay Extended Display) and detects AirPlay Screen Mirroring.
 /// When a stream is active and `fullscreenEnabled` is true on a dedicated external screen,
 /// the H.264/Metal/HDR renderer attaches directly to the external 16:9 display (zero black bars!)
-/// while the iPad screen becomes a clean control dashboard with an optional OLED power-save dimmer.
+/// while the iPad/iPhone screen becomes a clean control dashboard with an optional OLED power-save dimmer.
 @MainActor
 final class ExternalDisplayManager: ObservableObject {
     static let shared = ExternalDisplayManager()
@@ -133,7 +134,7 @@ final class ExternalDisplayManager: ObservableObject {
     }
 }
 
-/// Official iPadOS `UIWindowSceneSessionRoleExternalDisplayNonInteractive` delegate.
+/// Official iOS/iPadOS `UIWindowSceneSessionRoleExternalDisplayNonInteractive` delegate.
 /// Automatically powers USB-C / HDMI / AirPlay Extended displays at native full-screen 16:9.
 final class ExternalDisplaySceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
@@ -170,7 +171,6 @@ private struct ExternalDisplayRootView: View {
             Color.black.ignoresSafeArea()
 
             if manager.isRenderingExternally, let renderer = manager.activeRenderer {
-                // Native 16:9 external display output: fills 16:9 TV/Monitor completely with zero distortion
                 VideoDecoderView(
                     renderer: renderer,
                     aspectMode: .fit,
@@ -187,8 +187,8 @@ private struct ExternalDisplayRootView: View {
                         .foregroundStyle(.white)
                     Text(
                         manager.activeRenderer != nil
-                            ? "当前为本机显示模式，可在 iPad 顶栏「投屏」中一键切回外接屏全屏"
-                            : "在 iPad 上开始主机或云游戏串流后，画面将自动在此屏幕全屏输出"
+                            ? "当前为本机显示模式，可在顶栏「投屏」中一键切回外接屏全屏"
+                            : "在设备上开始主机或云游戏串流后，画面将自动在此屏幕全屏输出"
                     )
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.68))
@@ -219,3 +219,45 @@ struct AirPlayRoutePickerView: UIViewRepresentable {
         uiView.activeTintColor = activeTintColor
     }
 }
+#elseif os(macOS)
+import AppKit
+
+/// macOS lightweight stub: on macOS, users drag the native window directly to any external
+/// display and press ⌘F for native full-screen output.
+@MainActor
+final class ExternalDisplayManager: ObservableObject {
+    static let shared = ExternalDisplayManager()
+
+    @Published private(set) var hasExternalScene: Bool = false
+    @Published private(set) var isScreenMirrored: Bool = false
+    @Published private(set) var externalResolutionText: String = ""
+    @Published private(set) var externalRefreshHz: Int = 60
+    @Published private(set) var externalEDRHeadroom: CGFloat = 1.0
+    @Published var isExternalOutputEnabled: Bool = false
+
+    var isRenderingExternally: Bool { false }
+
+    private init() {}
+
+    func bindStream(
+        renderer: H264StreamRenderer,
+        title: String,
+        hdrToneMode: VideoHDRToneMode,
+        fullscreenEnabled: Bool
+    ) {}
+
+    func updateStreamHDR(_ mode: VideoHDRToneMode) {}
+    func unbindStream(renderer: H264StreamRenderer) {}
+    func refreshScreenState() {}
+}
+
+struct AirPlayRoutePickerView: NSViewRepresentable {
+    func makeNSView(context: Context) -> AVRoutePickerView {
+        let picker = AVRoutePickerView()
+        picker.isRoutePickerButtonBordered = false
+        return picker
+    }
+
+    func updateNSView(_ nsView: AVRoutePickerView, context: Context) {}
+}
+#endif

@@ -1,9 +1,12 @@
 import Foundation
 import Network
 import os
-import Photos
 import QuartzCore
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 import XboxPadNanoFFI
 
 private let nanoLogger = Logger(subsystem: "com.elliot.xboxpad", category: "nano")
@@ -352,36 +355,18 @@ final class NanoStreamSession: ObservableObject {
     }
 
     func captureScreenshotToPhotos(onCaptured: @escaping @MainActor (Bool) -> Void) {
-        videoRenderer.captureCurrentFrameImage { [weak self] image in
-            guard let image else {
+        videoRenderer.captureCurrentFrameImage { [weak self] cgImage in
+            guard let cgImage else {
                 Task { @MainActor [weak self] in
                     self?.showToast("当前暂无可截取的视频帧")
                     onCaptured(false)
                 }
                 return
             }
-            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-                guard status == .authorized || status == .limited else {
-                    Task { @MainActor [weak self] in
-                        self?.showToast("请在系统设置中允许 XboxPad 写入相册")
-                        onCaptured(false)
-                    }
-                    return
-                }
-                PHPhotoLibrary.shared().performChanges {
-                    PHAssetChangeRequest.creationRequestForAsset(from: image)
-                } completionHandler: { success, error in
-                    Task { @MainActor [weak self] in
-                        if success {
-                            let w = Int(image.size.width * image.scale)
-                            let h = Int(image.size.height * image.scale)
-                            self?.showToast("原画截屏已存入相册 (\(w)×\(h))")
-                            onCaptured(true)
-                        } else {
-                            self?.showToast("截屏保存失败：\(error?.localizedDescription ?? "未知错误")")
-                            onCaptured(false)
-                        }
-                    }
+            XboxPlatform.savePNGScreenshot(cgImage) { success, message in
+                Task { @MainActor [weak self] in
+                    self?.showToast(message)
+                    onCaptured(success)
                 }
             }
         }
@@ -744,8 +729,16 @@ final class NanoStreamSession: ObservableObject {
     }
 
     private func setupLifecycleObservers() {
+        #if os(iOS)
+        let fgName = UIApplication.willEnterForegroundNotification
+        let bgName = UIApplication.didEnterBackgroundNotification
+        #elseif os(macOS)
+        let fgName = NSApplication.didUnhideNotification
+        let bgName = NSApplication.didHideNotification
+        #endif
+
         foregroundObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.willEnterForegroundNotification,
+            forName: fgName,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -761,7 +754,7 @@ final class NanoStreamSession: ObservableObject {
         }
 
         backgroundObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didEnterBackgroundNotification,
+            forName: bgName,
             object: nil,
             queue: .main
         ) { [weak self] _ in

@@ -46,7 +46,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>XboxPad 需要访问麦克风，以便在 Xbox 派对与联机游戏中语音开麦。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>XboxPad 需要写入相册权限，以便将游戏原画截屏保存到你的 iPad 相册。</string>
+	<string>XboxPad 需要写入相册权限，以便将游戏原画截屏保存到你的相册。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
