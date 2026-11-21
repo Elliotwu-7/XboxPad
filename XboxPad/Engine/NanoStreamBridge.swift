@@ -131,6 +131,10 @@ final class NanoStreamSession: ObservableObject {
         }
     }
 
+    static var hasBuiltInRelayCluster: Bool {
+        xboxpad_has_builtin_ice()
+    }
+
     private let handleBox = ThreadSafeHandleBox()
     private var callbackContext: UnsafeMutableRawPointer?
     private var isStoppedByUser = false
@@ -603,6 +607,10 @@ final class NanoStreamSession: ObservableObject {
             iceUrl = trimmedCustomIce
             iceUser = settings.customIceUser
             icePass = settings.customIcePass
+        } else if settings.useBuiltInRelay && xboxpad_has_builtin_ice() {
+            iceUrl = "builtin"
+            iceUser = ""
+            icePass = ""
         } else {
             iceUrl = "off"
             iceUser = ""

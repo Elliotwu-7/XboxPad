@@ -130,6 +130,9 @@ typedef struct XboxPadCallbacks {
     XboxPadRumbleCallback on_rumble;
 } XboxPadCallbacks;
 
+/// Returns true if this binary was compiled with optional built-in STUN/TURN relay nodes.
+bool xboxpad_has_builtin_ice(void);
+
 /// Create a new streaming engine handle. Must be destroyed with xboxpad_destroy.
 XboxPadHandle *xboxpad_create(XboxPadCallbacks callbacks);
 

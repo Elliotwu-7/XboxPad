@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      include_builtin_relay:
+        description: 'Inject optional built-in STUN/TURN relay secrets (official OTA build only)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-ipa:
@@ -46,6 +52,10 @@ jobs:
         run: cargo test -- --nocapture
 
       - name: Build RustCore XCFramework (device arm64)
+        env:
+          XBOXPAD_BUILTIN_ICE_NODES: ${{ github.event_name == 'workflow_dispatch' && inputs.include_builtin_relay && secrets.XBOXPAD_BUILTIN_ICE_NODES || '' }}
+          XBOXPAD_BUILTIN_TURN_USER: ${{ github.event_name == 'workflow_dispatch' && inputs.include_builtin_relay && secrets.XBOXPAD_BUILTIN_TURN_USER || '' }}
+          XBOXPAD_BUILTIN_TURN_PASS: ${{ github.event_name == 'workflow_dispatch' && inputs.include_builtin_relay && secrets.XBOXPAD_BUILTIN_TURN_PASS || '' }}
         run: |
           chmod +x scripts/build-rust-ios.sh
           ./scripts/build-rust-ios.sh --device-only

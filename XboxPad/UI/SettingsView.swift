@@ -649,7 +649,21 @@ struct SettingsView: View {
             }
             .listRowBackground(XboxTheme.surface)
 
-            DisclosureGroup("自定义 STUN / TURN 中继服务器（可选）") {
+            if NanoStreamSession.hasBuiltInRelayCluster {
+                Toggle(isOn: $appState.settings.useBuiltInRelay) {
+                    settingLabel("默认公网打洞 / 中继加速", icon: "bolt.horizontal.circle.fill", color: XboxTheme.warning)
+                }
+                .listRowBackground(XboxTheme.surface)
+
+                if appState.settings.useBuiltInRelay && appState.settings.customIceUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("已启用内置多节点 STUN / TURN 加速集群：优先 P2P 直连，穿透受限时自动就近中继。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(XboxTheme.surface)
+                }
+            }
+
+            DisclosureGroup(NanoStreamSession.hasBuiltInRelayCluster ? "覆盖自定义 STUN / TURN 服务器（可选）" : "自定义 STUN / TURN 中继服务器（可选）") {
                 TextField("例如 turn:your-server.example:3478（逗号分隔多个）", text: $appState.settings.customIceUrl)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -659,9 +673,11 @@ struct SettingsView: View {
                         .autocorrectionDisabled()
                     SecureField("密码 / Credential（纯 STUN 可留空）", text: $appState.settings.customIcePass)
                 }
-                Text("开源版不包含内置私有中继服务器。局域网与常规公网会优先直连/公开 STUN 打洞；若处于严格 NAT 或跨运营商环境，可在此填入自建 coturn / TURN 服务器。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if !NanoStreamSession.hasBuiltInRelayCluster {
+                    Text("当前为纯净开源构建，不含内置私有中继服务器。局域网与常规公网默认直连/公开 STUN 打洞；严格 NAT 环境可在此手动填写自建 coturn / TURN 服务器。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .listRowBackground(XboxTheme.surface)
         } header: {

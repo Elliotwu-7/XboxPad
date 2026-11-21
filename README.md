@@ -9,10 +9,17 @@
 </p>
 
 <p align="center">
+  <a href="https://xbox.lynkco.site"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91%E4%B8%8E%E8%AE%A2%E9%98%85%E6%BA%90-xbox.lynkco.site-10D676?style=for-the-badge&logo=apple&logoColor=white&labelColor=0F172A" alt="Official Site" /></a>
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/LINUX_DO-%E8%AE%A4%E5%8F%AF%E5%BC%80%E6%BA%90%E7%A4%BE%E5%8C%BA-F5B82E?style=for-the-badge&logo=linux&logoColor=18181B&labelColor=0F172A" alt="LINUX DO Community" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-38BDF8?style=for-the-badge&labelColor=0F172A" alt="AGPL-3.0" /></a>
+</p>
+
+<p align="center">
   <a href="https://xbox.lynkco.site">官网与介绍页</a> ·
   <a href="sidestore://source?url=https://xbox.lynkco.site/source.json">一键添加到 SideStore</a> ·
   <a href="https://xbox.lynkco.site/source.json">SideStore 订阅源</a> ·
-  <a href="#公网穿透与自建-stun--turn-配置指南">自建 STUN / TURN 指南</a>
+  <a href="#公网穿透与自建-stun--turn-配置指南">自建 STUN / TURN 指南</a> ·
+  <a href="https://linux.do">LINUX DO 社区</a>
 </p>
 
 ---
@@ -78,8 +85,8 @@ open XboxPad.xcodeproj
 
 ## 公网穿透与自建 STUN / TURN 配置指南
 
-> **隐私与开源说明**：本开源版本**不包含任何开发者私有中继服务器地址或凭据**。
-> 局域网直连及常规公网环境默认使用标准公开 STUN 服务器进行 P2P 打洞；如果你的家庭宽带或移动网络处于对称型 / 严格 NAT，需要中继穿透时，可在 App 内手动填写你自己的 STUN / TURN 服务器。
+> **隐私与开源说明**：本 GitHub 开源源码与默认 CI 构建**不包含任何开发者私有中继服务器地址或凭据**。
+> 局域网直连及常规公网环境默认使用标准公开 STUN 服务器进行 P2P 打洞；如果你的家庭宽带或移动网络处于对称型 / 严格 NAT，需要中继穿透时，可在 App 内手动填写你自己的 STUN / TURN 服务器（官网 SideStore 订阅源版则会通过加密构建环境变量注入官方加速节点）。
 
 ### 在 App 内手动配置
 1. 打开 XboxPad → **设置 → 区服与网络 → 自定义 STUN / TURN 中继服务器（可选）**。
@@ -117,6 +124,20 @@ sudo systemctl enable --now coturn
 ## 小贴士：开启实体手柄西瓜键（Xbox Home）接管
 
 连接手柄后，前往 iPadOS **设置 → 通用 → 游戏手柄 → 主屏幕按钮**，开启 **「主屏幕按钮覆盖」**，串流时按下手柄西瓜键即可直接呼出 Xbox 主机菜单，不再误跳 Apple Games。
+
+---
+
+## 友情链接 · 社区认可
+
+<p align="center">
+  <a href="https://linux.do" target="_blank" rel="noopener">
+    <img src="docs/promo/linuxdo-badge.svg" alt="我的开源项目已链接认可 LINUX DO 社区" width="100%" />
+  </a>
+</p>
+
+<p align="center">
+  我的开源项目已链接认可 <a href="https://linux.do"><strong>LINUX DO 社区</strong></a> —— 新的理想型社区（真诚、友善、团结、专业）。
+</p>
 
 ---
 

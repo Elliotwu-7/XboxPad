@@ -483,7 +483,7 @@ struct AppSettings: Codable, Equatable {
     var mapShareToNexus: Bool = true
     var showPerformanceHUD: Bool = true
     var showVirtualControlsWhenNoGamepad: Bool = true
-    var useBuiltInRelay: Bool = false
+    var useBuiltInRelay: Bool = true
     var iCloudKeychainSync: Bool = true
     var customIceUrl: String = ""
     var customIceUser: String = ""
@@ -545,7 +545,7 @@ struct AppSettings: Codable, Equatable {
         mapShareToNexus = try c.decodeIfPresent(Bool.self, forKey: .mapShareToNexus) ?? true
         showPerformanceHUD = try c.decodeIfPresent(Bool.self, forKey: .showPerformanceHUD) ?? true
         showVirtualControlsWhenNoGamepad = try c.decodeIfPresent(Bool.self, forKey: .showVirtualControlsWhenNoGamepad) ?? true
-        useBuiltInRelay = try c.decodeIfPresent(Bool.self, forKey: .useBuiltInRelay) ?? false
+        useBuiltInRelay = try c.decodeIfPresent(Bool.self, forKey: .useBuiltInRelay) ?? true
         iCloudKeychainSync = try c.decodeIfPresent(Bool.self, forKey: .iCloudKeychainSync) ?? true
         customIceUrl = try c.decodeIfPresent(String.self, forKey: .customIceUrl) ?? ""
         customIceUser = try c.decodeIfPresent(String.self, forKey: .customIceUser) ?? ""

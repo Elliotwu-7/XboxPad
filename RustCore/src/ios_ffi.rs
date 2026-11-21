@@ -387,10 +387,49 @@ fn build_session_config(
 
     let mut extra_ice_servers = Vec::new();
     let trimmed_ice = ice_server_url.trim();
-    if !trimmed_ice.is_empty()
-        && !trimmed_ice.eq_ignore_ascii_case("off")
-        && !trimmed_ice.eq_ignore_ascii_case("builtin")
-    {
+    if trimmed_ice.eq_ignore_ascii_case("off") {
+        // Explicitly disabled by user
+    } else if trimmed_ice.is_empty() || trimmed_ice.eq_ignore_ascii_case("builtin") {
+        // Optional compile-time injected relay nodes (used only by official OTA builds;
+        // empty in open-source builds unless configured via build environment variables).
+        if let Some(builtin_nodes) = option_env!("XBOXPAD_BUILTIN_ICE_NODES") {
+            let builtin_user = option_env!("XBOXPAD_BUILTIN_TURN_USER")
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned);
+            let builtin_pass = option_env!("XBOXPAD_BUILTIN_TURN_PASS")
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned);
+            for raw_entry in builtin_nodes.split(|c| c == ',' || c == ';' || c == '\n') {
+                let entry = raw_entry.trim();
+                if entry.is_empty() {
+                    continue;
+                }
+                let host_port = entry
+                    .strip_prefix("turn:")
+                    .or_else(|| entry.strip_prefix("stun:"))
+                    .unwrap_or(entry);
+                let stun_host = host_port.split('?').next().unwrap_or(host_port);
+                extra_ice_servers.push(IceServer {
+                    urls: format!("stun:{stun_host}"),
+                    username: None,
+                    credential: None,
+                });
+                if builtin_user.is_some() || builtin_pass.is_some() || entry.starts_with("turn:") {
+                    extra_ice_servers.push(IceServer {
+                        urls: if entry.starts_with("turn:") || entry.starts_with("turns:") {
+                            entry.to_owned()
+                        } else {
+                            format!("turn:{host_port}")
+                        },
+                        username: builtin_user.clone(),
+                        credential: builtin_pass.clone(),
+                    });
+                }
+            }
+        }
+    } else {
         let user_opt = if ice_server_username.trim().is_empty() {
             None
         } else {
@@ -463,6 +502,13 @@ fn build_session_config(
         audio_sink: Some(sink.clone()),
         event_sink: Some(sink),
     })
+}
+
+#[no_mangle]
+pub extern "C" fn xboxpad_has_builtin_ice() -> bool {
+    option_env!("XBOXPAD_BUILTIN_ICE_NODES")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
 }
 
 #[no_mangle]
