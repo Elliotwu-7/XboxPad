@@ -1,0 +1,4 @@
+module XboxPadNanoFFI {
+    header "xboxpad_nano.h"
+    export *
+}

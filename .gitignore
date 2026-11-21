@@ -1,0 +1,18 @@
+# Xcode & build outputs
+build/
+DerivedData/
+*.ipa
+*.xcarchive
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+Frameworks/XboxPadNano.xcframework/
+
+# Rust outputs
+RustCore/target/
+
+# Local private deployment config (never commit)
+.env.deploy.local
+*.local.env
+
+# macOS
+.DS_Store

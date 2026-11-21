@@ -1,0 +1,504 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0BE9DDC6AF9D54CB55999F68 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E54F98F60327593909BE6568 /* QuartzCore.framework */; };
+		2469A85A2A1D27D8F32A6B53 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9AC5CF59AF233DCAD12193F /* AppState.swift */; };
+		2E4CEDFE93215811FF5B6FCD /* HapticsEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F240305697DA3C22C955FCFD /* HapticsEngine.swift */; };
+		34F0E10D4BE422F92B5C7373 /* XboxModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07B24D1BAB88593AA9A45207 /* XboxModels.swift */; };
+		3D26A39D2A1822BF00DB171A /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 02E0BE72D8B6A529439BC551 /* Security.framework */; };
+		3FC36458DA66C188CE770F63 /* XboxHomeAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8CF03BE5C43B8E5D8329789 /* XboxHomeAPI.swift */; };
+		42A03CF5C9D0ACBAF4B86EB3 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E4AF350191E33DFA50E92D18 /* VideoToolbox.framework */; };
+		4E521A962BF28A0BA630FB61 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13E517197E2C19785FA7738C /* KeychainStore.swift */; };
+		57F833D176D4ACA72AADF5F4 /* CloudGamesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC69FC37EA0B36671C60EB3 /* CloudGamesView.swift */; };
+		623B4359495FF013BF8957B3 /* CoreHaptics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D14DFF95BA72DF527234B84C /* CoreHaptics.framework */; };
+		68AB38F5697D179163BA14BD /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E8C809BA061CC4E81C3F861 /* RootView.swift */; };
+		6926BC0C154F867353436395 /* HomeConsolesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6471A525A07D57E3B45BC56C /* HomeConsolesView.swift */; };
+		703D8BDFAF10C403C96F70E2 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C63E8B7BE154F0880C103234 /* LoginView.swift */; };
+		7078A2B857CEB28B8CA4FEC3 /* VideoDecoderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9990525215E918FFB1C2BBAC /* VideoDecoderView.swift */; };
+		7A0FDE3995E2ECBD380C6115 /* XboxPadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87AD837A638D30AE52C6965A /* XboxPadApp.swift */; };
+		898DB61A4B5BB8A63FDE492E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 63E51BC0461C09BB67F5CFD7 /* Assets.xcassets */; };
+		89B11AC5798C5F3CB9D30096 /* StreamPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09583E5317CDDA5E75D6F659 /* StreamPlayerView.swift */; };
+		8F7ABDEBD66F1890FE7B66D4 /* XboxAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CF4BB0EA92104D3D79DDC1A /* XboxAuthService.swift */; };
+		91A360CCEB0608A0EBAA6619 /* XboxPadNano.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 821B37955B3CDB7440ADF963 /* XboxPadNano.xcframework */; };
+		A17FFBCDF23B8F10FB28DF17 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FE0F77714BA285CF9C0320E /* SettingsView.swift */; };
+		A4E16EA90882CB97B0B3BD2F /* OpusAudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B08ED510E9FC0614166764F /* OpusAudioEngine.swift */; };
+		A7B11B8AF0C6390B725DFA93 /* SafariServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A81DFD16C31EE72070806A76 /* SafariServices.framework */; };
+		BD4CC8457547A31DAE41C965 /* GamepadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF8B4FC9C902B2E4724A26AC /* GamepadManager.swift */; };
+		C502C061433352FD4615E58A /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24993ED2CBCAFBCEB5B0A160 /* AudioToolbox.framework */; };
+		D3B1F284C1C1194DA84AA120 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDF1A93D003C75CD9F47FB7A /* AVFoundation.framework */; };
+		E7197932A0DD8F4C35ED46DE /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BAC530C5501B716FAB2FA3E3 /* SystemConfiguration.framework */; };
+		F3264045978FFA879B0696F0 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 055F177579AFDAE0D6AF3EC2 /* CoreMedia.framework */; };
+		F7D9DC4493904786B24E6440 /* NanoStreamBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FF2C0C5765097E95E455DD4 /* NanoStreamBridge.swift */; };
+		FDC466FBF19141AE12F0A04F /* XboxCloudAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBEC7FD2FA8BC29E4C4C1837 /* XboxCloudAPI.swift */; };
+		FE96A15C34E76422BF826BA9 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C1B723F51595ECDAAEA234BA /* GameController.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		02E0BE72D8B6A529439BC551 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		055F177579AFDAE0D6AF3EC2 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
+		07B24D1BAB88593AA9A45207 /* XboxModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XboxModels.swift; sourceTree = "<group>"; };
+		09583E5317CDDA5E75D6F659 /* StreamPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamPlayerView.swift; sourceTree = "<group>"; };
+		0FE0F77714BA285CF9C0320E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		13E517197E2C19785FA7738C /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		24993ED2CBCAFBCEB5B0A160 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
+		2EC69FC37EA0B36671C60EB3 /* CloudGamesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudGamesView.swift; sourceTree = "<group>"; };
+		3B08ED510E9FC0614166764F /* OpusAudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpusAudioEngine.swift; sourceTree = "<group>"; };
+		4CF4BB0EA92104D3D79DDC1A /* XboxAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XboxAuthService.swift; sourceTree = "<group>"; };
+		63E51BC0461C09BB67F5CFD7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		6471A525A07D57E3B45BC56C /* HomeConsolesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeConsolesView.swift; sourceTree = "<group>"; };
+		7BE3E3EE6BA9A31B19EAA777 /* XboxPad.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = XboxPad.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		821B37955B3CDB7440ADF963 /* XboxPadNano.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = XboxPadNano.xcframework; path = Frameworks/XboxPadNano.xcframework; sourceTree = "<group>"; };
+		87AD837A638D30AE52C6965A /* XboxPadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XboxPadApp.swift; sourceTree = "<group>"; };
+		9990525215E918FFB1C2BBAC /* VideoDecoderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoDecoderView.swift; sourceTree = "<group>"; };
+		9E8C809BA061CC4E81C3F861 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		9FF2C0C5765097E95E455DD4 /* NanoStreamBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NanoStreamBridge.swift; sourceTree = "<group>"; };
+		A81DFD16C31EE72070806A76 /* SafariServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SafariServices.framework; path = System/Library/Frameworks/SafariServices.framework; sourceTree = SDKROOT; };
+		AF8B4FC9C902B2E4724A26AC /* GamepadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadManager.swift; sourceTree = "<group>"; };
+		BAC530C5501B716FAB2FA3E3 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
+		C1B723F51595ECDAAEA234BA /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
+		C63E8B7BE154F0880C103234 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		C8CF03BE5C43B8E5D8329789 /* XboxHomeAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XboxHomeAPI.swift; sourceTree = "<group>"; };
+		C9AC5CF59AF233DCAD12193F /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		CBEC7FD2FA8BC29E4C4C1837 /* XboxCloudAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XboxCloudAPI.swift; sourceTree = "<group>"; };
+		D14DFF95BA72DF527234B84C /* CoreHaptics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreHaptics.framework; path = System/Library/Frameworks/CoreHaptics.framework; sourceTree = SDKROOT; };
+		E4AF350191E33DFA50E92D18 /* VideoToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = VideoToolbox.framework; path = System/Library/Frameworks/VideoToolbox.framework; sourceTree = SDKROOT; };
+		E54F98F60327593909BE6568 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		EDF1A93D003C75CD9F47FB7A /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		F240305697DA3C22C955FCFD /* HapticsEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsEngine.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3278C8241727C6FABFE2ECDF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				91A360CCEB0608A0EBAA6619 /* XboxPadNano.xcframework in Frameworks */,
+				D3B1F284C1C1194DA84AA120 /* AVFoundation.framework in Frameworks */,
+				C502C061433352FD4615E58A /* AudioToolbox.framework in Frameworks */,
+				623B4359495FF013BF8957B3 /* CoreHaptics.framework in Frameworks */,
+				F3264045978FFA879B0696F0 /* CoreMedia.framework in Frameworks */,
+				FE96A15C34E76422BF826BA9 /* GameController.framework in Frameworks */,
+				0BE9DDC6AF9D54CB55999F68 /* QuartzCore.framework in Frameworks */,
+				A7B11B8AF0C6390B725DFA93 /* SafariServices.framework in Frameworks */,
+				3D26A39D2A1822BF00DB171A /* Security.framework in Frameworks */,
+				E7197932A0DD8F4C35ED46DE /* SystemConfiguration.framework in Frameworks */,
+				42A03CF5C9D0ACBAF4B86EB3 /* VideoToolbox.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		00E837DFE58B558C6DDC25AD /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				13E517197E2C19785FA7738C /* KeychainStore.swift */,
+				4CF4BB0EA92104D3D79DDC1A /* XboxAuthService.swift */,
+				07B24D1BAB88593AA9A45207 /* XboxModels.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		2C72ED25121A1242827AD34F = {
+			isa = PBXGroup;
+			children = (
+				F5813B161E6F45A187654F08 /* XboxPad */,
+				48C70F91E76A72F3BD4F6F49 /* Frameworks */,
+				FFE7F6E81A052F18F7F42D61 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		48C70F91E76A72F3BD4F6F49 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				24993ED2CBCAFBCEB5B0A160 /* AudioToolbox.framework */,
+				EDF1A93D003C75CD9F47FB7A /* AVFoundation.framework */,
+				D14DFF95BA72DF527234B84C /* CoreHaptics.framework */,
+				055F177579AFDAE0D6AF3EC2 /* CoreMedia.framework */,
+				C1B723F51595ECDAAEA234BA /* GameController.framework */,
+				E54F98F60327593909BE6568 /* QuartzCore.framework */,
+				A81DFD16C31EE72070806A76 /* SafariServices.framework */,
+				02E0BE72D8B6A529439BC551 /* Security.framework */,
+				BAC530C5501B716FAB2FA3E3 /* SystemConfiguration.framework */,
+				E4AF350191E33DFA50E92D18 /* VideoToolbox.framework */,
+				821B37955B3CDB7440ADF963 /* XboxPadNano.xcframework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		583B36F8DEE1A169CE2D08B7 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				63E51BC0461C09BB67F5CFD7 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		76C0B9F25126A60C6D0AE3C8 /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				AF8B4FC9C902B2E4724A26AC /* GamepadManager.swift */,
+				F240305697DA3C22C955FCFD /* HapticsEngine.swift */,
+				9FF2C0C5765097E95E455DD4 /* NanoStreamBridge.swift */,
+				3B08ED510E9FC0614166764F /* OpusAudioEngine.swift */,
+				9990525215E918FFB1C2BBAC /* VideoDecoderView.swift */,
+			);
+			path = Engine;
+			sourceTree = "<group>";
+		};
+		8745447732E2178BB5CBA41B /* API */ = {
+			isa = PBXGroup;
+			children = (
+				CBEC7FD2FA8BC29E4C4C1837 /* XboxCloudAPI.swift */,
+				C8CF03BE5C43B8E5D8329789 /* XboxHomeAPI.swift */,
+			);
+			path = API;
+			sourceTree = "<group>";
+		};
+		BF9B66FD60FC9897029D1761 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C9AC5CF59AF233DCAD12193F /* AppState.swift */,
+				87AD837A638D30AE52C6965A /* XboxPadApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		DF1C92C5D39EC1E486C4BC29 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				2EC69FC37EA0B36671C60EB3 /* CloudGamesView.swift */,
+				6471A525A07D57E3B45BC56C /* HomeConsolesView.swift */,
+				C63E8B7BE154F0880C103234 /* LoginView.swift */,
+				9E8C809BA061CC4E81C3F861 /* RootView.swift */,
+				0FE0F77714BA285CF9C0320E /* SettingsView.swift */,
+				09583E5317CDDA5E75D6F659 /* StreamPlayerView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		F5813B161E6F45A187654F08 /* XboxPad */ = {
+			isa = PBXGroup;
+			children = (
+				8745447732E2178BB5CBA41B /* API */,
+				BF9B66FD60FC9897029D1761 /* App */,
+				00E837DFE58B558C6DDC25AD /* Auth */,
+				76C0B9F25126A60C6D0AE3C8 /* Engine */,
+				583B36F8DEE1A169CE2D08B7 /* Resources */,
+				DF1C92C5D39EC1E486C4BC29 /* UI */,
+			);
+			path = XboxPad;
+			sourceTree = "<group>";
+		};
+		FFE7F6E81A052F18F7F42D61 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7BE3E3EE6BA9A31B19EAA777 /* XboxPad.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7782201E47C6BFD87B6FE462 /* XboxPad */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8467ED97DA1914C5827570C1 /* Build configuration list for PBXNativeTarget "XboxPad" */;
+			buildPhases = (
+				2BE3C0D603087D2758357557 /* Sources */,
+				D406F315A113E351D8DA6CC3 /* Resources */,
+				3278C8241727C6FABFE2ECDF /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = XboxPad;
+			packageProductDependencies = (
+			);
+			productName = XboxPad;
+			productReference = 7BE3E3EE6BA9A31B19EAA777 /* XboxPad.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F3CA1FDC83FE989AFA48B244 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = A6D333FDB24CE60ABA8C6A3E /* Build configuration list for PBXProject "XboxPad" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 2C72ED25121A1242827AD34F;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = FFE7F6E81A052F18F7F42D61 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7782201E47C6BFD87B6FE462 /* XboxPad */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D406F315A113E351D8DA6CC3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				898DB61A4B5BB8A63FDE492E /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2BE3C0D603087D2758357557 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2469A85A2A1D27D8F32A6B53 /* AppState.swift in Sources */,
+				57F833D176D4ACA72AADF5F4 /* CloudGamesView.swift in Sources */,
+				BD4CC8457547A31DAE41C965 /* GamepadManager.swift in Sources */,
+				2E4CEDFE93215811FF5B6FCD /* HapticsEngine.swift in Sources */,
+				6926BC0C154F867353436395 /* HomeConsolesView.swift in Sources */,
+				4E521A962BF28A0BA630FB61 /* KeychainStore.swift in Sources */,
+				703D8BDFAF10C403C96F70E2 /* LoginView.swift in Sources */,
+				F7D9DC4493904786B24E6440 /* NanoStreamBridge.swift in Sources */,
+				A4E16EA90882CB97B0B3BD2F /* OpusAudioEngine.swift in Sources */,
+				68AB38F5697D179163BA14BD /* RootView.swift in Sources */,
+				A17FFBCDF23B8F10FB28DF17 /* SettingsView.swift in Sources */,
+				89B11AC5798C5F3CB9D30096 /* StreamPlayerView.swift in Sources */,
+				7078A2B857CEB28B8CA4FEC3 /* VideoDecoderView.swift in Sources */,
+				8F7ABDEBD66F1890FE7B66D4 /* XboxAuthService.swift in Sources */,
+				FDC466FBF19141AE12F0A04F /* XboxCloudAPI.swift in Sources */,
+				3FC36458DA66C188CE770F63 /* XboxHomeAPI.swift in Sources */,
+				34F0E10D4BE422F92B5C7373 /* XboxModels.swift in Sources */,
+				7A0FDE3995E2ECBD380C6115 /* XboxPadApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1BC5A0FBDD04EF12A751ACBE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Frameworks\"",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = XboxPad/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lresolv",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.elliot.xboxpad;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		89CBE4E1B08AC54EA0AA6D48 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 4;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_BITCODE = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0.3;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		93AA653FF78BD804D987C334 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 4;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_BITCODE = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0.3;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C17A64757B3A22BA9F922FBE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Frameworks\"",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = XboxPad/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lresolv",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.elliot.xboxpad;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		8467ED97DA1914C5827570C1 /* Build configuration list for PBXNativeTarget "XboxPad" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1BC5A0FBDD04EF12A751ACBE /* Debug */,
+				C17A64757B3A22BA9F922FBE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A6D333FDB24CE60ABA8C6A3E /* Build configuration list for PBXProject "XboxPad" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				93AA653FF78BD804D987C334 /* Debug */,
+				89CBE4E1B08AC54EA0AA6D48 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = F3CA1FDC83FE989AFA48B244 /* Project object */;
+}

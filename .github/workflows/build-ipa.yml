@@ -1,0 +1,87 @@
+name: Build iPadOS IPA
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Setup Rust toolchain (iOS arm64)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            RustCore/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('RustCore/Cargo.lock', 'RustCore/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+          save-always: true
+
+      - name: Run RustCore unit tests
+        working-directory: RustCore
+        run: cargo test -- --nocapture
+
+      - name: Build RustCore XCFramework (device arm64)
+        run: |
+          chmod +x scripts/build-rust-ios.sh
+          ./scripts/build-rust-ios.sh --device-only
+
+      - name: Install XcodeGen and generate XboxPad.xcodeproj
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build unsigned iPadOS Release app
+        run: |
+          xcodebuild \
+            -project XboxPad.xcodeproj \
+            -scheme XboxPad \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            build
+
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/XboxPad.app"
+          test -d "$APP_PATH"
+          mkdir -p build/ipa/Payload
+          cp -R "$APP_PATH" build/ipa/Payload/
+          (cd build/ipa && zip -qry ../XboxPad-unsigned.ipa Payload)
+          ls -lh build/XboxPad-unsigned.ipa
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XboxPad-unsigned-ipa
+          path: build/XboxPad-unsigned.ipa
+          retention-days: 30

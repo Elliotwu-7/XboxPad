@@ -1,0 +1,10 @@
+XboxPad
+Copyright (c) 2026 Elliot
+
+This project incorporates and adapts the `nano-rs` Rust WebRTC Xbox streaming
+protocol engine originally developed by Geocld in XStreaming
+(https://github.com/Geocld/XStreaming), licensed under the GNU Affero General
+Public License v3.0 (AGPL-3.0).
+
+Accordingly, this project is distributed under the GNU Affero General Public
+License v3.0 (see LICENSE).

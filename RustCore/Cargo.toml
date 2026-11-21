@@ -1,0 +1,28 @@
+[package]
+name = "xboxpad-nano"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[lib]
+name = "xboxpad_nano"
+path = "src/lib.rs"
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+async-trait = "0.1"
+bytes = "1.12.1"
+libc = "0.2"
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = "1.0.145"
+tokio = { version = "1.37.0", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+rtp = "0.17.2"
+rtcp = "0.17.2"
+webrtc = "0.17.2"
+webrtc-media = "0.17.2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
