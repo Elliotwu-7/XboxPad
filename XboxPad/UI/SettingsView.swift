@@ -27,6 +27,7 @@ struct SettingsView: View {
     @State private var showLogoutConfirm = false
     @State private var showCustomIceEditor = false
     @State private var showDonateSheet = false
+    @State private var showVirtualLayoutEditor = false
 
     init(
         gamepadManager: GamepadManager,
@@ -87,6 +88,15 @@ struct SettingsView: View {
         .sheet(isPresented: $showDonateSheet) {
             donateSheetView
         }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $showVirtualLayoutEditor) {
+            VirtualGamepadLayoutEditorScreen {
+                showVirtualLayoutEditor = false
+                appState.showToast("已保存虚拟手柄自定义位置与大小")
+            }
+            .environmentObject(appState)
+        }
+        #endif
     }
 
     /// Type-erased per-category switch so Swift doesn't unify all 15 cards' nested generic
@@ -800,29 +810,41 @@ struct SettingsView: View {
 
             cardDivider
             sliderRow(
-                title: "虚拟按键尺寸缩放",
+                title: "虚拟按键全局尺寸缩放",
                 valueText: "\(Int((appState.settings.virtualGamepadScale * 100).rounded()))%",
                 tint: .teal,
                 value: $appState.settings.virtualGamepadScale,
-                range: 0.70...1.25,
+                range: 0.65...1.40,
                 step: 0.05
             )
 
-            if !appState.settings.virtualGamepadOffsets.isEmpty {
-                cardDivider
-                Button {
-                    appState.settings.virtualGamepadOffsets = [:]
-                    appState.showToast("已恢复默认虚拟手柄按键排版")
-                } label: {
-                    Text("重置自定义虚拟按键排版")
-                        .font(.xbCaption.weight(.semibold))
-                        .foregroundStyle(.orange)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            cardDivider
+            Button {
+                showVirtualLayoutEditor = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "hand.draw.fill")
+                        .font(.xbSubheadline.bold())
+                    Text("自定义虚拟手柄位置与大小（全屏拖拽排版）")
+                        .font(.xbSubheadline.weight(.bold))
                 }
-                .buttonStyle(.plain)
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(XboxTheme.emeraldBright, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
+            .buttonStyle(.plain)
+
+            cardDivider
+            VirtualGamepadClusterControlsView(
+                offsets: $appState.settings.virtualGamepadOffsets,
+                scales: $appState.settings.virtualGamepadClusterScales,
+                onResetAll: {
+                    appState.settings.virtualGamepadOffsets = [:]
+                    appState.settings.virtualGamepadClusterScales = [:]
+                    appState.showToast("已恢复所有虚拟按键默认位置与大小")
+                }
+            )
         }
     }
     #endif
@@ -2293,3 +2315,149 @@ private struct MouseScrollChipView: View {
         .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
+
+#if os(iOS)
+private struct VirtualGamepadClusterControlsView: View {
+    @Binding var offsets: [String: [Double]]
+    @Binding var scales: [String: Double]
+    let onResetAll: () -> Void
+
+    @State private var selectedCluster: VirtualGamepadCluster = .abxy
+
+    private var selectedId: String { selectedCluster.rawValue }
+
+    private var scaleBinding: Binding<Double> {
+        Binding(
+            get: { scales[selectedId] ?? 1.0 },
+            set: { scales[selectedId] = $0 }
+        )
+    }
+
+    private var offsetXBinding: Binding<Double> {
+        Binding(
+            get: { offsets[selectedId]?.first ?? 0.0 },
+            set: { newVal in
+                let curY = (offsets[selectedId]?.count ?? 0) >= 2 ? offsets[selectedId]![1] : 0.0
+                offsets[selectedId] = [newVal, curY]
+            }
+        )
+    }
+
+    private var offsetYBinding: Binding<Double> {
+        Binding(
+            get: {
+                let arr = offsets[selectedId]
+                return (arr?.count ?? 0) >= 2 ? arr![1] : 0.0
+            },
+            set: { newVal in
+                let curX = offsets[selectedId]?.first ?? 0.0
+                offsets[selectedId] = [curX, newVal]
+            }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("各模块独立大小与位置微调")
+                    .font(.xbCaption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if !offsets.isEmpty || !scales.isEmpty {
+                    Button("全部重置") {
+                        onResetAll()
+                    }
+                    .font(.xbCaption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .buttonStyle(.plain)
+                }
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(VirtualGamepadCluster.allCases) { cluster in
+                        let active = selectedCluster == cluster
+                        let customized = offsets[cluster.rawValue] != nil || scales[cluster.rawValue] != nil
+                        Button {
+                            selectedCluster = cluster
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(cluster.shortLabel)
+                                    .font(.xbCaption.weight(.semibold))
+                                if customized {
+                                    Circle()
+                                        .fill(active ? Color.black : XboxTheme.emeraldBright)
+                                        .frame(width: 5, height: 5)
+                                }
+                            }
+                            .foregroundStyle(active ? .black : .white.opacity(0.88))
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 6)
+                            .background(
+                                active ? AnyShapeStyle(Color.teal) : AnyShapeStyle(Color.white.opacity(0.08)),
+                                in: Capsule()
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("\(selectedCluster.label) · 独立大小")
+                        .font(.xbCaption.weight(.medium))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Text("\(Int((scaleBinding.wrappedValue * 100).rounded()))%")
+                        .font(.xbCaption.monospacedDigit().bold())
+                        .foregroundStyle(.teal)
+                }
+                Slider(value: scaleBinding, in: 0.65...1.50, step: 0.05)
+                    .tint(.teal)
+
+                HStack {
+                    Text("水平位置偏移 (X)")
+                        .font(.xbCaption.weight(.medium))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Text("\(Int(offsetXBinding.wrappedValue.rounded())) pt")
+                        .font(.xbCaption.monospacedDigit().bold())
+                        .foregroundStyle(XboxTheme.emeraldBright)
+                }
+                Slider(value: offsetXBinding, in: -280...280, step: 2)
+                    .tint(XboxTheme.emeraldBright)
+
+                HStack {
+                    Text("垂直位置偏移 (Y)")
+                        .font(.xbCaption.weight(.medium))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Text("\(Int(offsetYBinding.wrappedValue.rounded())) pt")
+                        .font(.xbCaption.monospacedDigit().bold())
+                        .foregroundStyle(XboxTheme.emeraldBright)
+                }
+                Slider(value: offsetYBinding, in: -220...220, step: 2)
+                    .tint(XboxTheme.emeraldBright)
+
+                if offsets[selectedId] != nil || scales[selectedId] != nil {
+                    Button {
+                        offsets.removeValue(forKey: selectedId)
+                        scales.removeValue(forKey: selectedId)
+                    } label: {
+                        Text("重置「\(selectedCluster.shortLabel)」默认位置与大小")
+                            .font(.xbCaption2.weight(.semibold))
+                            .foregroundStyle(.cyan)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                            .background(Color.cyan.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
+}
+#endif

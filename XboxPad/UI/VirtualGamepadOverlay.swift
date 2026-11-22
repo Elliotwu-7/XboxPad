@@ -76,14 +76,29 @@ struct VirtualGamepadOverlay: View {
     var hapticTap: Bool = true
     @Binding var isEditingLayout: Bool
     @Binding var savedOffsets: [String: [Double]]
+    @Binding var savedScales: [String: Double]
+    var onDoneEditing: (() -> Void)? = nil
 
     @State private var liveDragOffsets: [String: CGSize] = [:]
+    @State private var selectedClusterId: String = VirtualGamepadCluster.abxy.rawValue
+
+    private func effectiveScale(for id: String, baseScale: CGFloat) -> CGFloat {
+        let clusterMul = savedScales[id] ?? 1.0
+        return min(1.60, max(0.45, baseScale * CGFloat(scaleMultiplier) * CGFloat(clusterMul)))
+    }
 
     var body: some View {
         GeometryReader { geo in
             let shortSide = min(geo.size.width, geo.size.height)
             let baseScale: CGFloat = min(1.0, max(0.68, shortSide / 560.0))
-            let scale = min(1.25, max(0.55, baseScale * CGFloat(scaleMultiplier)))
+            let scale = min(1.40, max(0.55, baseScale * CGFloat(scaleMultiplier)))
+            let ltLbScale = effectiveScale(for: "lt_lb", baseScale: baseScale)
+            let rtRbScale = effectiveScale(for: "rt_rb", baseScale: baseScale)
+            let lsScale = effectiveScale(for: "ls", baseScale: baseScale)
+            let dpadScale = effectiveScale(for: "dpad", baseScale: baseScale)
+            let centerScale = effectiveScale(for: "center", baseScale: baseScale)
+            let abxyScale = effectiveScale(for: "abxy", baseScale: baseScale)
+            let rsScale = effectiveScale(for: "rs", baseScale: baseScale)
             let horizPad = max(14, max(geo.safeAreaInsets.leading, geo.safeAreaInsets.trailing) + (XboxPlatform.isPhone ? 10 : 20))
             let topPad = max(geo.safeAreaInsets.top + 10, XboxPlatform.isPhone ? 46 : 78)
             let bottomPad = max(geo.safeAreaInsets.bottom + 6, XboxPlatform.isPhone ? 14 : 22)
@@ -93,16 +108,16 @@ struct VirtualGamepadOverlay: View {
                     // Top shoulder & trigger row
                     HStack {
                         draggableCluster(id: "lt_lb") {
-                            VStack(spacing: 7 * scale) {
-                                triggerHoldButton("LT", isLeft: true, scale: scale)
-                                shoulderHoldButton("LB", keyPath: \.left_shoulder, scale: scale)
+                            VStack(spacing: 7 * ltLbScale) {
+                                triggerHoldButton("LT", isLeft: true, scale: ltLbScale)
+                                shoulderHoldButton("LB", keyPath: \.left_shoulder, scale: ltLbScale)
                             }
                         }
                         Spacer()
                         draggableCluster(id: "rt_rb") {
-                            VStack(spacing: 7 * scale) {
-                                triggerHoldButton("RT", isLeft: false, scale: scale)
-                                shoulderHoldButton("RB", keyPath: \.right_shoulder, scale: scale)
+                            VStack(spacing: 7 * rtRbScale) {
+                                triggerHoldButton("RT", isLeft: false, scale: rtRbScale)
+                                shoulderHoldButton("RB", keyPath: \.right_shoulder, scale: rtRbScale)
                             }
                         }
                     }
@@ -118,7 +133,7 @@ struct VirtualGamepadOverlay: View {
                             draggableCluster(id: "ls") {
                                 VirtualThumbstick(
                                     label: "LS",
-                                    scale: scale,
+                                    scale: lsScale,
                                     floating: floatingStick,
                                     hapticEnabled: hapticTap,
                                     disabledForEdit: isEditingLayout
@@ -128,13 +143,13 @@ struct VirtualGamepadOverlay: View {
                             }
 
                             draggableCluster(id: "dpad") {
-                                HStack(spacing: 5 * scale) {
-                                    padButton("←", keyPath: \.dpad_left, scale: scale)
-                                    VStack(spacing: 5 * scale) {
-                                        padButton("↑", keyPath: \.dpad_up, scale: scale)
-                                        padButton("↓", keyPath: \.dpad_down, scale: scale)
+                                HStack(spacing: 5 * dpadScale) {
+                                    padButton("←", keyPath: \.dpad_left, scale: dpadScale)
+                                    VStack(spacing: 5 * dpadScale) {
+                                        padButton("↑", keyPath: \.dpad_up, scale: dpadScale)
+                                        padButton("↓", keyPath: \.dpad_down, scale: dpadScale)
                                     }
-                                    padButton("→", keyPath: \.dpad_right, scale: scale)
+                                    padButton("→", keyPath: \.dpad_right, scale: dpadScale)
                                 }
                             }
                         }
@@ -143,22 +158,22 @@ struct VirtualGamepadOverlay: View {
 
                         // Center system row: View / Xbox / Menu + LS/RS click
                         draggableCluster(id: "center") {
-                            VStack(spacing: 8 * scale) {
-                                HStack(spacing: 8 * scale) {
-                                    miniPillButton("L3", keyPath: \.left_thumb, scale: scale)
-                                    miniPillButton("R3", keyPath: \.right_thumb, scale: scale)
+                            VStack(spacing: 8 * centerScale) {
+                                HStack(spacing: 8 * centerScale) {
+                                    miniPillButton("L3", keyPath: \.left_thumb, scale: centerScale)
+                                    miniPillButton("R3", keyPath: \.right_thumb, scale: centerScale)
                                 }
-                                HStack(spacing: 8 * scale) {
-                                    padButton("View", keyPath: \.view, wide: true, scale: scale)
+                                HStack(spacing: 8 * centerScale) {
+                                    padButton("View", keyPath: \.view, wide: true, scale: centerScale)
                                     Button {
                                         guard !isEditingLayout else { return }
                                         fireButtonHaptic()
                                         gamepadManager.pulseNexusButton()
                                     } label: {
                                         Image(systemName: "xbox.logo")
-                                            .font(scale < 0.85 ? .subheadline : .headline)
+                                            .font(centerScale < 0.85 ? .subheadline : .headline)
                                             .foregroundStyle(.white)
-                                            .frame(width: 50 * scale, height: 42 * scale)
+                                            .frame(width: 50 * centerScale, height: 42 * centerScale)
                                             .background(XboxTheme.primaryGradient, in: Capsule())
                                             .overlay(Capsule().stroke(Color.white.opacity(0.32), lineWidth: 1))
                                     }
@@ -170,10 +185,10 @@ struct VirtualGamepadOverlay: View {
                                         }
                                     )
                                     .buttonStyle(.plain)
-                                    padButton("Menu", keyPath: \.menu, wide: true, scale: scale)
+                                    padButton("Menu", keyPath: \.menu, wide: true, scale: centerScale)
                                 }
                             }
-                            .padding(.bottom, 4 * scale)
+                            .padding(.bottom, 4 * centerScale)
                         }
 
                         Spacer()
@@ -181,20 +196,20 @@ struct VirtualGamepadOverlay: View {
                         // Right side: ABXY + Right thumbstick
                         VStack(alignment: .trailing, spacing: 12 * scale) {
                             draggableCluster(id: "abxy") {
-                                HStack(spacing: 6 * scale) {
-                                    padButton("X", keyPath: \.x, accent: Color(red: 0.24, green: 0.58, blue: 0.98), circular: true, scale: scale)
-                                    VStack(spacing: 6 * scale) {
-                                        padButton("Y", keyPath: \.y, accent: Color(red: 0.96, green: 0.74, blue: 0.16), circular: true, scale: scale)
-                                        padButton("A", keyPath: \.a, accent: XboxTheme.emeraldBright, circular: true, scale: scale)
+                                HStack(spacing: 6 * abxyScale) {
+                                    padButton("X", keyPath: \.x, accent: Color(red: 0.24, green: 0.58, blue: 0.98), circular: true, scale: abxyScale)
+                                    VStack(spacing: 6 * abxyScale) {
+                                        padButton("Y", keyPath: \.y, accent: Color(red: 0.96, green: 0.74, blue: 0.16), circular: true, scale: abxyScale)
+                                        padButton("A", keyPath: \.a, accent: XboxTheme.emeraldBright, circular: true, scale: abxyScale)
                                     }
-                                    padButton("B", keyPath: \.b, accent: Color(red: 0.94, green: 0.32, blue: 0.34), circular: true, scale: scale)
+                                    padButton("B", keyPath: \.b, accent: Color(red: 0.94, green: 0.32, blue: 0.34), circular: true, scale: abxyScale)
                                 }
                             }
 
                             draggableCluster(id: "rs") {
                                 VirtualThumbstick(
                                     label: "RS",
-                                    scale: scale,
+                                    scale: rsScale,
                                     floating: floatingStick,
                                     hapticEnabled: hapticTap,
                                     disabledForEdit: isEditingLayout
@@ -208,50 +223,28 @@ struct VirtualGamepadOverlay: View {
                     .padding(.bottom, bottomPad)
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
-                .opacity(isEditingLayout ? 0.95 : max(0.22, min(1.0, opacity)))
+                .opacity(isEditingLayout ? 0.96 : max(0.22, min(1.0, opacity)))
 
-                // Floating Edit Mode Toolbar
+                // Floating Edit Mode Toolbar (drag position + per-module size slider)
                 if isEditingLayout {
-                    VStack {
-                        HStack(spacing: 12) {
-                            Image(systemName: "hand.draw.fill")
-                                .foregroundStyle(XboxTheme.emeraldBright)
-                            Text("拖动任意按键模块自由排版")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white)
-
-                            Button("重置位置") {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                                    savedOffsets = [:]
-                                    liveDragOffsets = [:]
-                                }
+                    VirtualLayoutEditorBar(
+                        selectedClusterId: $selectedClusterId,
+                        savedOffsets: $savedOffsets,
+                        savedScales: $savedScales,
+                        onResetAll: {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                savedOffsets = [:]
+                                savedScales = [:]
+                                liveDragOffsets = [:]
                             }
-                            .font(.caption.bold())
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color.orange.opacity(0.18), in: Capsule())
-
-                            Button("完成编辑") {
-                                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
-                                    isEditingLayout = false
-                                }
+                        },
+                        onDone: {
+                            withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                                isEditingLayout = false
                             }
-                            .font(.caption.bold())
-                            .foregroundStyle(.black)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(XboxTheme.emeraldBright, in: Capsule())
+                            onDoneEditing?()
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 9)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .background(Color.black.opacity(0.72), in: Capsule())
-                        .overlay(Capsule().stroke(XboxTheme.emeraldBright.opacity(0.55), lineWidth: 1.2))
-                        .padding(.top, 16)
-
-                        Spacer()
-                    }
+                    )
                 }
             }
             .onAppear {
@@ -277,24 +270,37 @@ struct VirtualGamepadOverlay: View {
     private func draggableCluster<Content: View>(id: String, @ViewBuilder content: () -> Content) -> some View {
         let off = totalOffset(for: id)
         if isEditingLayout {
+            let isSelected = selectedClusterId == id
             content()
-                .padding(4)
+                .padding(5)
+                .background(
+                    isSelected ? XboxTheme.emerald.opacity(0.14) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .strokeBorder(
-                            XboxTheme.emeraldBright.opacity(0.85),
-                            style: StrokeStyle(lineWidth: 1.6, dash: [5, 4])
+                            isSelected ? XboxTheme.emeraldBright : Color.white.opacity(0.42),
+                            style: StrokeStyle(lineWidth: isSelected ? 2.2 : 1.3, dash: isSelected ? [] : [5, 4])
                         )
                 )
                 .offset(off)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    selectedClusterId = id
+                    fireButtonHaptic()
+                }
                 .highPriorityGesture(
-                    DragGesture()
+                    DragGesture(minimumDistance: 2)
                         .onChanged { value in
+                            if selectedClusterId != id {
+                                selectedClusterId = id
+                            }
                             liveDragOffsets[id] = value.translation
                         }
                         .onEnded { value in
                             let base = storedOffset(for: id)
-                            let nx = max(-260, min(260, Double(base.width + value.translation.width)))
+                            let nx = max(-280, min(280, Double(base.width + value.translation.width)))
                             let ny = max(-220, min(220, Double(base.height + value.translation.height)))
                             savedOffsets[id] = [nx, ny]
                             liveDragOffsets[id] = .zero
@@ -744,5 +750,189 @@ private struct VirtualThumbstick: View {
                         }
             )
         #endif
+    }
+}
+
+// MARK: - Visual Layout Editor Bar & Full-Screen Settings Preview Editor
+
+private struct VirtualLayoutEditorBar: View {
+    @Binding var selectedClusterId: String
+    @Binding var savedOffsets: [String: [Double]]
+    @Binding var savedScales: [String: Double]
+    let onResetAll: () -> Void
+    let onDone: () -> Void
+
+    private var selectedCluster: VirtualGamepadCluster {
+        VirtualGamepadCluster(rawValue: selectedClusterId) ?? .abxy
+    }
+
+    private var currentScaleBinding: Binding<Double> {
+        Binding(
+            get: { savedScales[selectedClusterId] ?? 1.0 },
+            set: { savedScales[selectedClusterId] = $0 }
+        )
+    }
+
+    private var currentOffsetText: String {
+        let arr = savedOffsets[selectedClusterId]
+        let x = Int((arr?.first ?? 0).rounded())
+        let y = Int(((arr?.count ?? 0) >= 2 ? arr![1] : 0).rounded())
+        return "X:\(x)  Y:\(y)"
+    }
+
+    var body: some View {
+        VStack {
+            VStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    Image(systemName: "hand.draw.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(XboxTheme.emeraldBright)
+                    Text("拖动模块调位置 · 点击模块调大小")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 4)
+
+                    Button("重置当前") {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                            savedOffsets.removeValue(forKey: selectedClusterId)
+                            savedScales.removeValue(forKey: selectedClusterId)
+                        }
+                    }
+                    .font(.caption2.bold())
+                    .foregroundStyle(.cyan)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.cyan.opacity(0.16), in: Capsule())
+                    .buttonStyle(.plain)
+
+                    Button("全部重置") {
+                        onResetAll()
+                    }
+                    .font(.caption2.bold())
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.orange.opacity(0.18), in: Capsule())
+                    .buttonStyle(.plain)
+
+                    Button("保存完成") {
+                        onDone()
+                    }
+                    .font(.caption.bold())
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(XboxTheme.emeraldBright, in: Capsule())
+                    .buttonStyle(.plain)
+                }
+
+                HStack(spacing: 10) {
+                    Text(selectedCluster.shortLabel)
+                        .font(.caption2.bold())
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(XboxTheme.emeraldBright, in: Capsule())
+
+                    Text("大小")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+
+                    Slider(value: currentScaleBinding, in: 0.65...1.50, step: 0.05)
+                        .tint(XboxTheme.emeraldBright)
+
+                    Text("\(Int((currentScaleBinding.wrappedValue * 100).rounded()))%")
+                        .font(.caption2.monospacedDigit().bold())
+                        .foregroundStyle(XboxTheme.emeraldBright)
+                        .frame(width: 38, alignment: .trailing)
+
+                    Text(currentOffsetText)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: 520)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(XboxTheme.emeraldBright.opacity(0.50), lineWidth: 1.1)
+            )
+            .padding(.top, 12)
+            .padding(.horizontal, 12)
+
+            Spacer()
+        }
+    }
+}
+
+/// Full-screen interactive virtual gamepad editor launched directly from Settings
+/// so users can drag positions and customize per-module sizes in landscape without starting a stream.
+struct VirtualGamepadLayoutEditorScreen: View {
+    @EnvironmentObject var appState: AppState
+    let onClose: () -> Void
+
+    @State private var isEditing = true
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.04, green: 0.06, blue: 0.09).ignoresSafeArea()
+
+            // Subtle 16:9 game viewport frame guide
+            GeometryReader { geo in
+                let targetW = min(geo.size.width, geo.size.height * 16.0 / 9.0)
+                let targetH = targetW * 9.0 / 16.0
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(0.03))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.10), style: StrokeStyle(lineWidth: 1, dash: [6, 6]))
+                        )
+                    VStack(spacing: 6) {
+                        Image(systemName: "gamecontroller.fill")
+                            .font(.title2)
+                            .foregroundStyle(.white.opacity(0.16))
+                        Text("16:9 游戏画面参考区")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.24))
+                    }
+                }
+                .frame(width: targetW, height: targetH)
+                .position(x: geo.size.width / 2, y: geo.size.height / 2)
+            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+
+            VirtualGamepadOverlay(
+                gamepadManager: appState.gamepadManager,
+                opacity: appState.settings.virtualGamepadOpacity,
+                scaleMultiplier: appState.settings.virtualGamepadScale,
+                floatingStick: appState.settings.virtualGamepadFloatingStick,
+                hapticTap: appState.settings.virtualGamepadHapticTap,
+                isEditingLayout: $isEditing,
+                savedOffsets: $appState.settings.virtualGamepadOffsets,
+                savedScales: $appState.settings.virtualGamepadClusterScales,
+                onDoneEditing: {
+                    onClose()
+                }
+            )
+            .ignoresSafeArea()
+        }
+        .xboxHideSystemChrome()
+        .onAppear {
+            if appState.activeStreamTarget == nil {
+                XboxPlatform.setPreferredLandscapeForStreaming(true)
+            }
+        }
+        .onDisappear {
+            if appState.activeStreamTarget == nil {
+                XboxPlatform.setPreferredLandscapeForStreaming(false)
+            }
+        }
     }
 }

@@ -812,6 +812,42 @@ enum KMControlPreset: String, CaseIterable, Identifiable, Codable, Hashable, Sen
     }
 }
 
+enum VirtualGamepadCluster: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
+    case abxy = "abxy"
+    case ls = "ls"
+    case rs = "rs"
+    case dpad = "dpad"
+    case ltLb = "lt_lb"
+    case rtRb = "rt_rb"
+    case center = "center"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .abxy: return "ABXY 功能键"
+        case .ls: return "左摇杆 (LS)"
+        case .rs: return "右摇杆 (RS)"
+        case .dpad: return "十字键 (D-Pad)"
+        case .ltLb: return "LT / LB 左扳机"
+        case .rtRb: return "RT / RB 右扳机"
+        case .center: return "系统键 (View/Xbox/Menu)"
+        }
+    }
+
+    var shortLabel: String {
+        switch self {
+        case .abxy: return "ABXY"
+        case .ls: return "左摇杆"
+        case .rs: return "右摇杆"
+        case .dpad: return "十字键"
+        case .ltLb: return "LT/LB"
+        case .rtRb: return "RT/RB"
+        case .center: return "系统键"
+        }
+    }
+}
+
 struct AppSettings: Codable, Equatable {
     var resolution: StreamResolution = .p1080HQ
     var customMaxBitrateMbps: Int = 0 // 0 = 自动 (最高 40Mbps), 4..60 = 用户自定义上限 (Mbps)
@@ -860,6 +896,7 @@ struct AppSettings: Codable, Equatable {
     var virtualGamepadFloatingStick: Bool = false
     var virtualGamepadHapticTap: Bool = true
     var virtualGamepadOffsets: [String: [Double]] = [:]
+    var virtualGamepadClusterScales: [String: Double] = [:]
     var controlProfile: ControlProfilePreset = .standard
     var gamepadButtonMap: GamepadButtonMap = GamepadButtonMap()
     var keyboardBindingMap: KeyboardBindingMap = KeyboardBindingMap()
@@ -893,7 +930,7 @@ struct AppSettings: Codable, Equatable {
         case rumbleEnabled, handleRumbleStrength, triggerRumbleStrength, fallbackTriggerToHandles
         case stickDeadzone, leftStickDeadzone, rightStickDeadzone, stickResponseCurve, triggerDeadzone
         case gyroAimMode, gyroSensitivity, gyroInvertY, keyboardMouseMode, kmPreset, mouseSensitivity, mouseAntiDeadzone, mouseYScale, mouseInvertY, showKeymapHintHUD
-        case virtualGamepadOpacity, virtualGamepadScale, virtualGamepadFloatingStick, virtualGamepadHapticTap, virtualGamepadOffsets
+        case virtualGamepadOpacity, virtualGamepadScale, virtualGamepadFloatingStick, virtualGamepadHapticTap, virtualGamepadOffsets, virtualGamepadClusterScales
         case controlProfile, gamepadButtonMap, keyboardBindingMap
         case nintendoButtonLayout, micEchoCancellation, shadowLift, videoBrightness, videoContrast, videoSaturation
         case macLock16x9Window, favoriteCloudTitleIds, recentCloudTitleIds
@@ -954,6 +991,7 @@ struct AppSettings: Codable, Equatable {
         virtualGamepadFloatingStick = try c.decodeIfPresent(Bool.self, forKey: .virtualGamepadFloatingStick) ?? false
         virtualGamepadHapticTap = try c.decodeIfPresent(Bool.self, forKey: .virtualGamepadHapticTap) ?? true
         virtualGamepadOffsets = try c.decodeIfPresent([String: [Double]].self, forKey: .virtualGamepadOffsets) ?? [:]
+        virtualGamepadClusterScales = try c.decodeIfPresent([String: Double].self, forKey: .virtualGamepadClusterScales) ?? [:]
         controlProfile = try c.decodeIfPresent(ControlProfilePreset.self, forKey: .controlProfile) ?? .standard
         gamepadButtonMap = try c.decodeIfPresent(GamepadButtonMap.self, forKey: .gamepadButtonMap) ?? GamepadButtonMap()
         var decodedKB = try c.decodeIfPresent(KeyboardBindingMap.self, forKey: .keyboardBindingMap) ?? KeyboardBindingMap()

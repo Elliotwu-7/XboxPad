@@ -143,7 +143,8 @@ struct StreamPlayerView: View {
                     floatingStick: appState.settings.virtualGamepadFloatingStick,
                     hapticTap: appState.settings.virtualGamepadHapticTap,
                     isEditingLayout: $isEditingVirtualLayout,
-                    savedOffsets: $appState.settings.virtualGamepadOffsets
+                    savedOffsets: $appState.settings.virtualGamepadOffsets,
+                    savedScales: $appState.settings.virtualGamepadClusterScales
                 )
                 .ignoresSafeArea()
             }
