@@ -149,6 +149,24 @@ enum XboxPlatform {
     static func toggleWindowFullScreen() {
         NSApp.keyWindow?.toggleFullScreen(nil)
     }
+
+    @MainActor
+    static func applyWindowAspectLock(_ locked: Bool) {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        if locked {
+            window.contentAspectRatio = NSSize(width: 16, height: 9)
+            let isFullScreen = window.styleMask.contains(.fullScreen)
+            if !isFullScreen {
+                let currentContent = window.contentLayoutRect.size
+                let targetHeight = round(currentContent.width * 9.0 / 16.0)
+                if abs(currentContent.height - targetHeight) > 8, targetHeight >= 360 {
+                    window.setContentSize(NSSize(width: currentContent.width, height: targetHeight))
+                }
+            }
+        } else {
+            window.contentAspectRatio = NSSize(width: 0, height: 0)
+        }
+    }
     #endif
 
     /// Save a lossless PNG screenshot from the decoded CGImage:
@@ -265,4 +283,14 @@ extension View {
         }
         #endif
     }
+}
+
+extension Notification.Name {
+    static let xboxpadToggleFullscreen = Notification.Name("com.elliot.xboxpad.cmd.toggleFullscreen")
+    static let xboxpadToggleOverlay = Notification.Name("com.elliot.xboxpad.cmd.toggleOverlay")
+    static let xboxpadOpenSettings = Notification.Name("com.elliot.xboxpad.cmd.openSettings")
+    static let xboxpadCaptureScreenshot = Notification.Name("com.elliot.xboxpad.cmd.captureScreenshot")
+    static let xboxpadToggleRecording = Notification.Name("com.elliot.xboxpad.cmd.toggleRecording")
+    static let xboxpadToggleMic = Notification.Name("com.elliot.xboxpad.cmd.toggleMic")
+    static let xboxpadCheckUpdates = Notification.Name("com.elliot.xboxpad.cmd.checkUpdates")
 }

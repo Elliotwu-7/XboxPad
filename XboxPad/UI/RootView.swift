@@ -8,6 +8,7 @@ import AppKit
 
 struct RootView: View {
     @EnvironmentObject var appState: AppState
+    @State private var selectedTab: Int = 0
 
     init() {
         #if os(iOS)
@@ -35,21 +36,24 @@ struct RootView: View {
                 } else if !appState.isAuthenticated {
                     LoginView()
                 } else {
-                    TabView {
-                        HomeConsolesView(gamepadManager: appState.gamepadManager)
+                    TabView(selection: $selectedTab) {
+                        HomeConsolesView(gamepadManager: appState.gamepadManager, isSelectedTab: selectedTab == 0)
                             .tabItem {
                                 Label("主机串流", systemImage: "tv.and.hifispeaker.fill")
                             }
+                            .tag(0)
 
-                        CloudGamesView()
+                        CloudGamesView(isSelectedTab: selectedTab == 1)
                             .tabItem {
                                 Label("云游戏", systemImage: "cloud.fill")
                             }
+                            .tag(1)
 
                         SettingsView(gamepadManager: appState.gamepadManager)
                             .tabItem {
                                 Label("设置与手柄", systemImage: "slider.horizontal.3")
                             }
+                            .tag(2)
                     }
                     .tint(XboxTheme.emerald)
                 }
@@ -100,7 +104,9 @@ struct RootView: View {
         }
         .xboxStreamPresentation(item: $appState.activeStreamTarget) { target in
             StreamEventContainerView(
-                lockPointer: appState.settings.keyboardMouseMode != .off && appState.gamepadManager.telemetry.mouseConnected
+                lockPointer: appState.settings.keyboardMouseMode != .off
+                    && appState.gamepadManager.telemetry.mouseConnected
+                    && !appState.isStreamOverlayOpen
             ) {
                 StreamPlayerView(
                     target: target,
@@ -108,12 +114,42 @@ struct RootView: View {
                     gamepadManager: appState.gamepadManager,
                     settings: appState.settings,
                     onDismiss: {
+                        appState.isStreamOverlayOpen = false
                         appState.activeStreamTarget = nil
                     }
                 )
                 .environmentObject(appState)
             }
             .ignoresSafeArea()
+        }
+        .onReceive(appState.gamepadManager.menuNavigationPublisher) { action in
+            guard appState.isAuthenticated, appState.activeStreamTarget == nil else { return }
+            switch action {
+            case .prevTab:
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    selectedTab = (selectedTab + 2) % 3
+                }
+            case .nextTab:
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    selectedTab = (selectedTab + 1) % 3
+                }
+            default:
+                break
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadOpenSettings)) { _ in
+            guard appState.isAuthenticated, appState.activeStreamTarget == nil else { return }
+            selectedTab = 2
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadCheckUpdates)) { _ in
+            Task {
+                await appState.updateChecker.checkForUpdates(silent: false)
+                if let upd = appState.updateChecker.availableUpdate {
+                    appState.showToast("发现新版本 v\(upd.version)，可在首页或设置一键下载")
+                } else if !appState.updateChecker.lastStatusText.isEmpty {
+                    appState.showToast(appState.updateChecker.lastStatusText)
+                }
+            }
         }
     }
 
@@ -225,11 +261,12 @@ private struct StreamEventContainerView<Content: View>: NSViewControllerRepresen
     }
 
     func makeNSViewController(context: Context) -> StreamGCEventNSViewController<Content> {
-        StreamGCEventNSViewController(rootView: content)
+        StreamGCEventNSViewController(rootView: content, lockPointer: lockPointer)
     }
 
     func updateNSViewController(_ nsViewController: StreamGCEventNSViewController<Content>, context: Context) {
         nsViewController.controllerUserInteractionEnabled = false
+        nsViewController.setPointerLockAllowed(lockPointer)
         nsViewController.updateRootView(content)
     }
 }
@@ -237,9 +274,15 @@ private struct StreamEventContainerView<Content: View>: NSViewControllerRepresen
 private final class StreamGCEventNSViewController<Content: View>: GCEventViewController {
     private let hostingController: NSHostingController<Content>
     private var keyEventMonitor: Any?
+    private var mouseClickMonitor: Any?
+    private var windowObservers: [NSObjectProtocol] = []
+    private var shouldLockPointer: Bool
+    private var isPointerLocked = false
+    private var isCursorHidden = false
 
-    init(rootView: Content) {
+    init(rootView: Content, lockPointer: Bool) {
         self.hostingController = NSHostingController(rootView: rootView)
+        self.shouldLockPointer = lockPointer
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -248,7 +291,9 @@ private final class StreamGCEventNSViewController<Content: View>: GCEventViewCon
     }
 
     deinit {
-        removeKeyMonitor()
+        applyPointerLock(false)
+        removeEventMonitors()
+        removeWindowObservers()
     }
 
     override func loadView() {
@@ -271,38 +316,122 @@ private final class StreamGCEventNSViewController<Content: View>: GCEventViewCon
     override func viewDidAppear() {
         super.viewDidAppear()
         controllerUserInteractionEnabled = false
-        installKeyMonitor()
+        installEventMonitors()
+        installWindowObservers()
+        if shouldLockPointer, let win = view.window, win.isKeyWindow, win.attachedSheet == nil {
+            applyPointerLock(true)
+        }
     }
 
     override func viewWillDisappear() {
         super.viewWillDisappear()
-        removeKeyMonitor()
+        applyPointerLock(false)
+        removeEventMonitors()
+        removeWindowObservers()
+    }
+
+    func setPointerLockAllowed(_ allowed: Bool) {
+        shouldLockPointer = allowed
+        if !allowed {
+            applyPointerLock(false)
+        } else if let win = view.window, win.isKeyWindow, NSApp.isActive, win.attachedSheet == nil {
+            applyPointerLock(true)
+        }
+    }
+
+    private func applyPointerLock(_ locked: Bool) {
+        guard isPointerLocked != locked else { return }
+        isPointerLocked = locked
+        CGAssociateMouseAndMouseCursorPosition(locked ? 0 : 1)
+        if locked && !isCursorHidden {
+            NSCursor.hide()
+            isCursorHidden = true
+        } else if !locked && isCursorHidden {
+            NSCursor.unhide()
+            isCursorHidden = false
+        }
     }
 
     /// Consume regular gameplay keystrokes in AppKit's responder chain so macOS never plays
     /// the unhandled-key system alert beep ("嘟嘟嘟") while GCKeyboard delivers raw keys to Xbox.
-    private func installKeyMonitor() {
-        guard keyEventMonitor == nil else { return }
-        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
-            guard let self, let win = self.view.window, win.isKeyWindow else {
+    /// Also manages true FPS mouse lock/unlock (click canvas to lock, Esc to release cursor + open bar).
+    private func installEventMonitors() {
+        if keyEventMonitor == nil {
+            keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+                guard let self, let win = self.view.window, win.isKeyWindow else {
+                    return event
+                }
+                if event.modifierFlags.contains(.command) {
+                    return event
+                }
+                if win.attachedSheet != nil || win.firstResponder is NSTextView {
+                    return event
+                }
+                // Esc while pointer is locked releases cursor cleanly & opens top bar
+                if event.type == .keyDown && event.keyCode == 53 && self.isPointerLocked {
+                    self.applyPointerLock(false)
+                    NotificationCenter.default.post(name: .xboxpadToggleOverlay, object: nil)
+                    return nil
+                }
+                return nil
+            }
+        }
+
+        if mouseClickMonitor == nil {
+            mouseClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+                guard let self,
+                      self.shouldLockPointer,
+                      !self.isPointerLocked,
+                      let win = self.view.window,
+                      event.window === win,
+                      win.isKeyWindow,
+                      win.attachedSheet == nil else {
+                    return event
+                }
+                let locInView = self.view.convert(event.locationInWindow, from: nil)
+                // Keep top 54pt zone clickable for opening the overlay bar without relocking
+                let distFromTop = self.view.bounds.maxY - locInView.y
+                if self.view.bounds.contains(locInView) && distFromTop > 54 {
+                    self.applyPointerLock(true)
+                }
                 return event
             }
-            // Allow system/app Command shortcuts (⌘F, ⌘,, ⌥⌘M, ⌘Q, ⌘W) and sheets/text fields through.
-            if event.modifierFlags.contains(.command) {
-                return event
-            }
-            if win.attachedSheet != nil || win.firstResponder is NSTextView {
-                return event
-            }
-            return nil
         }
     }
 
-    private func removeKeyMonitor() {
+    private func removeEventMonitors() {
         if let monitor = keyEventMonitor {
             NSEvent.removeMonitor(monitor)
             keyEventMonitor = nil
         }
+        if let monitor = mouseClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            mouseClickMonitor = nil
+        }
+    }
+
+    private func installWindowObservers() {
+        removeWindowObservers()
+        let nc = NotificationCenter.default
+        let releaseNames: [Notification.Name] = [
+            NSWindow.didResignKeyNotification,
+            NSApplication.didResignActiveNotification,
+            NSApplication.didHideNotification,
+        ]
+        for name in releaseNames {
+            windowObservers.append(
+                nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    self?.applyPointerLock(false)
+                }
+            )
+        }
+    }
+
+    private func removeWindowObservers() {
+        for obs in windowObservers {
+            NotificationCenter.default.removeObserver(obs)
+        }
+        windowObservers.removeAll()
     }
 
     func updateRootView(_ rootView: Content) {

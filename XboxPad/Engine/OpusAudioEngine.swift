@@ -57,6 +57,7 @@ final class OpusAudioEngine: @unchecked Sendable {
     // Pre-allocated reusable decode buffers on `decodeQueue` (zero per-packet heap allocations)
     private var decodeScratchPCM: [Float] = Array(repeating: 0, count: 5760 * 2)
     private let reusableInputBox = ReusableOpusInputBox()
+    private var pcmTap: (@Sendable ([Float], Int, Double, Int) -> Void)?
 
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
@@ -96,6 +97,12 @@ final class OpusAudioEngine: @unchecked Sendable {
             self.pacingMode = mode
             self.recomputeWatermarksLocked(sampleRate: self.outputSampleRate, channels: Int(self.outputChannels))
             os_unfair_lock_unlock(&self.ringLock)
+        }
+    }
+
+    func setPCMTap(_ tap: (@Sendable ([Float], Int, Double, Int) -> Void)?) {
+        decodeQueue.async { [weak self] in
+            self?.pcmTap = tap
         }
     }
 
@@ -478,6 +485,9 @@ final class OpusAudioEngine: @unchecked Sendable {
         if (status == noErr || status == Self.noMoreInputStatus), ioOutputFrames > 0 {
             let decodedSamples = Int(ioOutputFrames) * channels
             writeToRing(samples: decodeScratchPCM, count: decodedSamples)
+            if let tap = pcmTap {
+                tap(Array(decodeScratchPCM.prefix(decodedSamples)), Int(ioOutputFrames), outputSampleRate, channels)
+            }
         }
     }
 

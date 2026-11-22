@@ -104,11 +104,16 @@ struct StreamPlayerView: View {
                     }
             }
 
-            // Performance HUD + Live 30s Latency Sparkline
-            if showHUD, !externalDisplay.isRenderingExternally, case .streaming = session.connectionState {
+            // Performance HUD + Live 30s Latency Sparkline + REC indicator
+            if (showHUD || session.isRecording), !externalDisplay.isRenderingExternally, case .streaming = session.connectionState {
                 VStack {
-                    HStack {
-                        performanceHUD
+                    HStack(spacing: 8) {
+                        if showHUD {
+                            performanceHUD
+                        }
+                        if session.isRecording {
+                            recordingLiveBadge
+                        }
                         Spacer()
                     }
                     .padding(.top, showOverlayBar ? (showMoreDrawer ? 196 : 74) : 14)
@@ -194,39 +199,38 @@ struct StreamPlayerView: View {
             }
 
             connectionOverlay
-
-            #if os(macOS)
-            // macOS native keyboard shortcuts: ⌘F toggles window fullscreen, ⌥⌘M toggles overlay bar
-            Group {
-                Button("") {
-                    XboxPlatform.toggleWindowFullScreen()
-                }
-                .keyboardShortcut("f", modifiers: .command)
-
-                Button("") {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
-                        if showOverlayBar {
-                            showMoreDrawer = false
-                            showOverlayBar = false
-                        } else {
-                            showOverlayBar = true
-                        }
-                    }
-                }
-                .keyboardShortcut("m", modifiers: [.command, .option])
-                Button("") {
-                    showOverlayBar = false
-                    showMoreDrawer = false
-                    showSettingsSheet.toggle()
-                }
-                .keyboardShortcut(",", modifiers: .command)
-            }
-            .frame(width: 0, height: 0)
-            .opacity(0.001)
-            .allowsHitTesting(false)
-            #endif
         }
         .xboxHideSystemChrome()
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadToggleFullscreen)) { _ in
+            #if os(macOS)
+            XboxPlatform.toggleWindowFullScreen()
+            #endif
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadToggleOverlay)) { _ in
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                if showOverlayBar {
+                    showMoreDrawer = false
+                    showOverlayBar = false
+                } else {
+                    showOverlayBar = true
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadOpenSettings)) { _ in
+            showOverlayBar = false
+            showMoreDrawer = false
+            showSettingsSheet.toggle()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadCaptureScreenshot)) { _ in
+            closeOverlayBar()
+            triggerScreenshotCapture()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadToggleRecording)) { _ in
+            session.toggleRecording()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadToggleMic)) { _ in
+            session.toggleMicrophone()
+        }
         .sheet(isPresented: $showCastSheet) {
             castControlSheet
         }
@@ -246,6 +250,10 @@ struct StreamPlayerView: View {
         .onAppear {
             XboxPlatform.setIdleSleepDisabled(true)
             XboxPlatform.setPreferredLandscapeForStreaming(true)
+            #if os(macOS)
+            XboxPlatform.applyWindowAspectLock(appState.settings.macLock16x9Window)
+            #endif
+            syncStreamOverlayFlag()
             appState.gamepadManager.onToggleOverlayRequested = {
                 withAnimation(.spring(response: 0.26, dampingFraction: 0.86)) {
                     if showOverlayBar {
@@ -267,16 +275,52 @@ struct StreamPlayerView: View {
         .onDisappear {
             XboxPlatform.setIdleSleepDisabled(false)
             XboxPlatform.setPreferredLandscapeForStreaming(false)
+            #if os(macOS)
+            XboxPlatform.applyWindowAspectLock(false)
+            #endif
+            appState.isStreamOverlayOpen = false
             appState.gamepadManager.onToggleOverlayRequested = nil
             externalDisplay.unbindStream(renderer: session.videoRenderer)
             session.stop()
         }
+        .onChange(of: showOverlayBar) { _ in syncStreamOverlayFlag() }
+        .onChange(of: showSettingsSheet) { _ in syncStreamOverlayFlag() }
+        .onChange(of: showCastSheet) { _ in syncStreamOverlayFlag() }
         .onChange(of: appState.settings) { newSettings in
             session.updateSettings(newSettings)
             showHUD = newSettings.showPerformanceHUD
             externalDisplay.updateStreamHDR(newSettings.hdrToneMode)
             externalDisplay.isExternalOutputEnabled = newSettings.externalDisplayFullscreen
+            #if os(macOS)
+            XboxPlatform.applyWindowAspectLock(newSettings.macLock16x9Window)
+            #endif
         }
+    }
+
+    private func syncStreamOverlayFlag() {
+        appState.isStreamOverlayOpen = showOverlayBar || showSettingsSheet || showCastSheet
+    }
+
+    private var recordingElapsedLabel: String {
+        let m = session.recordingElapsedSec / 60
+        let s = session.recordingElapsedSec % 60
+        return String(format: "%02d:%02d", m, s)
+    }
+
+    private var recordingLiveBadge: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 8, height: 8)
+            Text("REC \(recordingElapsedLabel)")
+                .font(.caption2.monospacedDigit().bold())
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 7)
+        .background(Color.red.opacity(0.28), in: Capsule())
+        .background(Color.black.opacity(0.62), in: Capsule())
+        .overlay(Capsule().stroke(Color.red.opacity(0.65), lineWidth: 1))
     }
 
     // MARK: - Telemetry HUD + Dual-Line Sparkline
@@ -500,6 +544,15 @@ struct StreamPlayerView: View {
                     }
 
                     overlayChipButton(
+                        title: session.isRecording ? recordingElapsedLabel : "录屏",
+                        systemImage: session.isRecording ? "stop.circle.fill" : "record.circle",
+                        active: session.isRecording,
+                        activeColor: Color(red: 1.0, green: 0.28, blue: 0.32)
+                    ) {
+                        session.toggleRecording()
+                    }
+
+                    overlayChipButton(
                         title: "设置",
                         systemImage: "slider.horizontal.3",
                         active: showSettingsSheet,
@@ -580,6 +633,15 @@ struct StreamPlayerView: View {
             ) {
                 closeOverlayBar()
                 triggerScreenshotCapture()
+            }
+
+            drawerTile(
+                title: session.isRecording ? "停止录屏" : "原画录屏",
+                systemImage: session.isRecording ? "stop.circle.fill" : "record.circle",
+                active: session.isRecording,
+                activeColor: Color(red: 1.0, green: 0.28, blue: 0.32)
+            ) {
+                session.toggleRecording()
             }
 
             drawerTile(

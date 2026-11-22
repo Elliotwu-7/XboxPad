@@ -1,7 +1,14 @@
 import SwiftUI
 
 struct CloudGamesView: View {
+    private enum CloudFilterMode {
+        case all
+        case favorites
+        case recent
+    }
+
     @EnvironmentObject var appState: AppState
+    var isSelectedTab: Bool = true
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSizeClass
     private var isRegularLayout: Bool { hSizeClass == .regular }
@@ -9,7 +16,8 @@ struct CloudGamesView: View {
     private var isRegularLayout: Bool { true }
     #endif
     @State private var searchText = ""
-    @State private var filterRecentOnly = false
+    @State private var filterMode: CloudFilterMode = .all
+    @State private var focusedGameIndex: Int = 0
 
     private var columns: [GridItem] {
         if isRegularLayout {
@@ -18,20 +26,39 @@ struct CloudGamesView: View {
         return [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 14)]
     }
 
+    private var favoritesCount: Int {
+        appState.cloudGames.filter { appState.isFavoriteCloudGame($0.id) }.count
+    }
+
     private var recentCount: Int {
-        appState.cloudGames.filter(\.isRecent).count
+        appState.cloudGames.filter { appState.isRecentCloudGame($0) }.count
     }
 
     private var filteredGames: [CloudGame] {
-        appState.cloudGames.filter { game in
-            if filterRecentOnly && !game.isRecent {
-                return false
+        let base = appState.cloudGames.filter { game in
+            switch filterMode {
+            case .all:
+                break
+            case .favorites:
+                if !appState.isFavoriteCloudGame(game.id) { return false }
+            case .recent:
+                if !appState.isRecentCloudGame(game) { return false }
             }
             let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             if q.isEmpty { return true }
             return game.title.localizedCaseInsensitiveContains(q)
                 || game.publisher.localizedCaseInsensitiveContains(q)
         }
+        if filterMode == .recent {
+            let localOrder = appState.settings.recentCloudTitleIds
+            return base.sorted { a, b in
+                let ia = localOrder.firstIndex(of: a.id) ?? Int.max
+                let ib = localOrder.firstIndex(of: b.id) ?? Int.max
+                if ia != ib { return ia < ib }
+                return a.title < b.title
+            }
+        }
+        return base
     }
 
     private var activeRegionLabel: String {
@@ -68,24 +95,63 @@ struct CloudGamesView: View {
                     } else if filteredGames.isEmpty {
                         emptySearchState
                     } else {
-                        ScrollView {
-                            LazyVGrid(columns: columns, spacing: 16) {
-                                ForEach(filteredGames) { game in
-                                    gameCard(game)
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                LazyVGrid(columns: columns, spacing: 16) {
+                                    ForEach(Array(filteredGames.enumerated()), id: \.element.id) { idx, game in
+                                        let isFocused = appState.gamepadManager.telemetry.connected
+                                            && isSelectedTab
+                                            && focusedGameIndex == idx
+                                        gameCard(game, isGamepadFocused: isFocused)
+                                            .id(game.id)
+                                    }
+                                }
+                                .padding(.horizontal, isRegularLayout ? 24 : 16)
+                                .padding(.top, 8)
+                                .padding(.bottom, 28)
+                            }
+                            .refreshable {
+                                await appState.refreshCloudGames()
+                            }
+                            .onChange(of: focusedGameIndex) { newIdx in
+                                if newIdx >= 0, newIdx < filteredGames.count {
+                                    withAnimation(.easeInOut(duration: 0.16)) {
+                                        proxy.scrollTo(filteredGames[newIdx].id, anchor: .center)
+                                    }
                                 }
                             }
-                            .padding(.horizontal, isRegularLayout ? 24 : 16)
-                            .padding(.top, 8)
-                            .padding(.bottom, 28)
-                        }
-                        .refreshable {
-                            await appState.refreshCloudGames()
                         }
                     }
                 }
             }
             .navigationTitle("xCloud 云游戏")
             .searchable(text: $searchText, prompt: "搜索游戏名称或发行商")
+            .onReceive(appState.gamepadManager.menuNavigationPublisher) { action in
+                guard isSelectedTab, appState.activeStreamTarget == nil, !filteredGames.isEmpty else { return }
+                let count = filteredGames.count
+                let rowStep = isRegularLayout ? 4 : 2
+                switch action {
+                case .left:
+                    focusedGameIndex = max(focusedGameIndex - 1, 0)
+                case .right:
+                    focusedGameIndex = min(focusedGameIndex + 1, count - 1)
+                case .up:
+                    focusedGameIndex = max(focusedGameIndex - rowStep, 0)
+                case .down:
+                    focusedGameIndex = min(focusedGameIndex + rowStep, count - 1)
+                case .confirm:
+                    let idx = min(max(focusedGameIndex, 0), count - 1)
+                    appState.gamepadManager.haptics.playSubtleConfirmPulse()
+                    appState.launchCloudGame(filteredGames[idx])
+                default:
+                    break
+                }
+            }
+            .onChange(of: filteredGames.count) { newCount in
+                if focusedGameIndex >= newCount {
+                    focusedGameIndex = max(newCount - 1, 0)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -104,24 +170,45 @@ struct CloudGamesView: View {
     }
 
     private var filterToolbar: some View {
-        HStack(spacing: 10) {
-            filterPill(
-                title: "全部游戏",
-                count: appState.cloudGames.count,
-                selected: !filterRecentOnly
-            ) {
-                withAnimation(.easeInOut(duration: 0.2)) { filterRecentOnly = false }
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    filterPill(
+                        title: "全部",
+                        count: appState.cloudGames.count,
+                        selected: filterMode == .all
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            filterMode = .all
+                            focusedGameIndex = 0
+                        }
+                    }
+
+                    filterPill(
+                        title: "收藏",
+                        count: favoritesCount,
+                        selected: filterMode == .favorites
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            filterMode = .favorites
+                            focusedGameIndex = 0
+                        }
+                    }
+
+                    filterPill(
+                        title: "最近游玩",
+                        count: recentCount,
+                        selected: filterMode == .recent
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            filterMode = .recent
+                            focusedGameIndex = 0
+                        }
+                    }
+                }
             }
 
-            filterPill(
-                title: "最近游玩",
-                count: recentCount,
-                selected: filterRecentOnly
-            ) {
-                withAnimation(.easeInOut(duration: 0.2)) { filterRecentOnly = true }
-            }
-
-            Spacer(minLength: 8)
+            Spacer(minLength: 4)
 
             Menu {
                 ForEach(CloudRegionPreset.presets) { preset in
@@ -186,80 +273,108 @@ struct CloudGamesView: View {
         .buttonStyle(.plain)
     }
 
-    private func gameCard(_ game: CloudGame) -> some View {
-        Button {
-            appState.activeStreamTarget = .cloud(game)
-        } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .topTrailing) {
-                    AsyncImage(url: game.tileImageURL ?? game.posterImageURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        case .failure:
-                            placeholderCover
-                        default:
-                            placeholderCover.overlay(
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                    .tint(XboxTheme.emerald)
-                            )
+    private func gameCard(_ game: CloudGame, isGamepadFocused: Bool = false) -> some View {
+        let isFav = appState.isFavoriteCloudGame(game.id)
+        let isRec = appState.isRecentCloudGame(game)
+
+        return ZStack(alignment: .topLeading) {
+            Button {
+                appState.launchCloudGame(game)
+            } label: {
+                VStack(alignment: .leading, spacing: 0) {
+                    ZStack(alignment: .topTrailing) {
+                        AsyncImage(url: game.tileImageURL ?? game.posterImageURL) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            case .failure:
+                                placeholderCover
+                            default:
+                                placeholderCover.overlay(
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                        .tint(XboxTheme.emerald)
+                                )
+                            }
+                        }
+                        .frame(height: 152)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+
+                        LinearGradient(
+                            colors: [.clear, .clear, Color.black.opacity(0.55)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+
+                        if isRec {
+                            HStack(spacing: 4) {
+                                Image(systemName: "clock.fill")
+                                    .font(.system(size: 9))
+                                Text("最近")
+                                    .font(.caption2.bold())
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(XboxTheme.primaryGradient, in: Capsule())
+                            .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
+                            .padding(8)
                         }
                     }
-                    .frame(height: 152)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
 
-                    LinearGradient(
-                        colors: [.clear, .clear, Color.black.opacity(0.55)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(game.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                            .frame(minHeight: 36, alignment: .topLeading)
 
-                    if game.isRecent {
-                        HStack(spacing: 4) {
-                            Image(systemName: "clock.fill")
-                                .font(.system(size: 9))
-                            Text("最近")
-                                .font(.caption2.bold())
+                        HStack {
+                            Text(game.publisher.isEmpty ? "Xbox Cloud Gaming" : game.publisher)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer()
+                            Image(systemName: "play.circle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(XboxTheme.emeraldBright.opacity(0.85))
                         }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(XboxTheme.primaryGradient, in: Capsule())
-                        .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
-                        .padding(8)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
                 }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(game.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .frame(minHeight: 36, alignment: .topLeading)
-
-                    HStack {
-                        Text(game.publisher.isEmpty ? "Xbox Cloud Gaming" : game.publisher)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Spacer()
-                        Image(systemName: "play.circle.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(XboxTheme.emeraldBright.opacity(0.85))
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .xboxCard(cornerRadius: 16, highlighted: isGamepadFocused)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(
+                            isGamepadFocused ? XboxTheme.emeraldBright : Color.clear,
+                            lineWidth: isGamepadFocused ? 2.2 : 0
+                        )
+                )
             }
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .xboxCard(cornerRadius: 16)
+            .buttonStyle(CloudCardButtonStyle())
+
+            Button {
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.78)) {
+                    appState.toggleFavoriteCloudGame(game.id)
+                }
+            } label: {
+                Image(systemName: isFav ? "star.fill" : "star")
+                    .font(.caption.bold())
+                    .foregroundStyle(isFav ? Color.yellow : Color.white.opacity(0.88))
+                    .frame(width: 28, height: 28)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .background(Color.black.opacity(0.42), in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 0.8))
+            }
+            .buttonStyle(.plain)
+            .padding(8)
         }
-        .buttonStyle(CloudCardButtonStyle())
     }
 
     private func cloudErrorState(_ message: String) -> some View {
@@ -298,14 +413,28 @@ struct CloudGamesView: View {
 
     private var emptySearchState: some View {
         VStack(spacing: 12) {
-            XboxIconBadge(systemName: "magnifyingglass", color: .secondary, size: 50)
-            Text(filterRecentOnly ? "暂无最近游玩记录" : "未找到匹配的云游戏")
-                .font(.headline)
-                .foregroundStyle(.white)
-            Text(filterRecentOnly ? "开始任意云游戏后，会在这里快速显示。" : "换个关键词试试，或切换到「全部游戏」查看完整列表。")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            XboxIconBadge(
+                systemName: filterMode == .favorites ? "star" : "magnifyingglass",
+                color: filterMode == .favorites ? .yellow : .secondary,
+                size: 50
+            )
+            Text(
+                filterMode == .favorites
+                    ? "暂无收藏的云游戏"
+                    : (filterMode == .recent ? "暂无最近游玩记录" : "未找到匹配的云游戏")
+            )
+            .font(.headline)
+            .foregroundStyle(.white)
+            Text(
+                filterMode == .favorites
+                    ? "点击游戏卡片左上角的星标，即可快速收藏常玩大作。"
+                    : (filterMode == .recent
+                       ? "开始任意云游戏后，会在这里置顶显示。"
+                       : "换个关键词试试，或切换到「全部」查看完整列表。")
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
         }
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

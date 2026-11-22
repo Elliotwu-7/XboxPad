@@ -26,6 +26,8 @@ final class MicrophoneEngine: @unchecked Sendable {
     var onOpusPacket: (@Sendable (Data, UInt32) -> Void)?
     /// Callback delivering normalized microphone RMS level (0.0...1.0) throttled for UI indicator.
     var onMicLevel: (@Sendable (Float) -> Void)?
+    /// Enable Apple hardware acoustic echo cancellation & noise suppression (Voice Processing I/O).
+    var echoCancellationEnabled: Bool = true
 
     private var lastLevelReportTime: CFAbsoluteTime = 0
 
@@ -122,6 +124,14 @@ final class MicrophoneEngine: @unchecked Sendable {
 
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
+        if echoCancellationEnabled {
+            do {
+                try inputNode.setVoiceProcessingEnabled(true)
+                Self.logger.info("microphone hardware AEC / voice processing enabled")
+            } catch {
+                Self.logger.notice("hardware AEC unavailable on current audio route: \(error.localizedDescription, privacy: .public)")
+            }
+        }
         let hwFormat = inputNode.outputFormat(forBus: 0)
         guard hwFormat.sampleRate > 0, hwFormat.channelCount > 0 else {
             return "未检测到可用的麦克风输入设备。"

@@ -4,11 +4,23 @@ import UIKit
 #elseif os(macOS)
 import AppKit
 #endif
+import Combine
 import Foundation
 import GameController
 import os
 import QuartzCore
 import XboxPadNanoFFI
+
+enum GamepadMenuAction: Sendable {
+    case up
+    case down
+    case left
+    case right
+    case confirm
+    case back
+    case prevTab
+    case nextTab
+}
 
 /// Native iPadOS multi-controller + keyboard/mouse manager:
 /// - Supports up to 4 simultaneous hardware controllers (`P1`–`P4`, `gamepad_index = 0..3`)
@@ -87,6 +99,10 @@ final class GamepadManager: ObservableObject {
     /// Invoked on MainActor when user holds View + Menu together to toggle stream overlay.
     var onToggleOverlayRequested: (() -> Void)?
 
+    /// Broadcasts non-streaming Couch Mode UI navigation events (D-pad / Stick / A / B / LB / RB)
+    /// so RootView, HomeConsolesView, and CloudGamesView can all react cleanly.
+    let menuNavigationPublisher = PassthroughSubject<GamepadMenuAction, Never>()
+
     private let inputQueue = DispatchQueue(label: "com.elliot.xboxpad.gamepad.input", qos: .userInteractive)
     #if os(iOS)
     private let motionManager = CMMotionManager()
@@ -122,6 +138,8 @@ final class GamepadManager: ObservableObject {
         var pressedKeys: Set<GCKeyCode> = []
         var mapShareToNexus = true
         var menuComboEnabled = true
+        var nintendoLayout: NintendoButtonLayoutMode = .auto
+        var isNintendoSlot: [Bool] = [false, false, false, false]
         var virtualOverrides = XboxPadInputFrame()
         var virtualLeftX: Float = 0
         var virtualLeftY: Float = 0
@@ -139,7 +157,10 @@ final class GamepadManager: ObservableObject {
         var onKeyboardEvent: (@Sendable (UInt8, Bool) -> Void)?
         var onComboTriggered: (@Sendable () -> Void)?
         var onNonStreamingUpdate: (@Sendable () -> Void)?
+        var onMenuAction: (@Sendable (GamepadMenuAction) -> Void)?
         var lastTelemetryPush: CFTimeInterval = 0
+        var lastMenuDirTime: CFTimeInterval = 0
+        var lastMenuButtonsMask: UInt8 = 0
     }
 
     private let runtime = InputRuntime()
@@ -157,6 +178,11 @@ final class GamepadManager: ObservableObject {
         runtime.onNonStreamingUpdate = { [weak self] in
             Task { @MainActor [weak self] in
                 self?.refreshTelemetrySnapshot()
+            }
+        }
+        runtime.onMenuAction = { [weak self] action in
+            Task { @MainActor [weak self] in
+                self?.menuNavigationPublisher.send(action)
             }
         }
         startObservingHardware()
@@ -185,6 +211,7 @@ final class GamepadManager: ObservableObject {
         let mSens = Float(settings.mouseSensitivity)
         let share = settings.mapShareToNexus
         let combo = settings.menuComboEnabled
+        let ninLayout = settings.nintendoButtonLayout
         inputQueue.async { [runtime] in
             runtime.leftDeadzone = ldz
             runtime.rightDeadzone = rdz
@@ -197,6 +224,7 @@ final class GamepadManager: ObservableObject {
             runtime.mouseSensitivity = mSens
             runtime.mapShareToNexus = share
             runtime.menuComboEnabled = combo
+            runtime.nintendoLayout = ninLayout
             if gMode == .off {
                 runtime.deviceGyroX = 0
                 runtime.deviceGyroY = 0
@@ -470,14 +498,26 @@ final class GamepadManager: ObservableObject {
         bindHardwareKeyboardAndMouse()
 
         var newMask: UInt8 = 0
+        var nintendoFlags: [Bool] = [false, false, false, false]
         for idx in 0..<allPads.count {
             newMask |= (1 << idx)
+            let c = allPads[idx]
+            let v = (c.vendorName ?? "").lowercased()
+            let cat = c.productCategory.lowercased()
+            nintendoFlags[idx] = v.contains("nintendo")
+                || v.contains("pro controller")
+                || v.contains("joy-con")
+                || cat.contains("nintendo")
+                || cat.contains("switch")
+                || cat.contains("joy-con")
         }
         let capturedPads = allPads
+        let capturedNintendoFlags = nintendoFlags
         inputQueue.async { [runtime] in
             let prevMask = runtime.connectedSlotMask
             runtime.controllers = capturedPads
             runtime.connectedSlotMask = newMask
+            runtime.isNintendoSlot = capturedNintendoFlags
 
             if runtime.isStreamingActive {
                 // Dynamically notify Xbox when P2/P3/P4 connects or disconnects mid-stream
@@ -711,6 +751,46 @@ final class GamepadManager: ObservableObject {
             sendAllSlotsLocked(runtime: runtime, force: false)
         } else {
             let now = CACurrentMediaTime()
+            if let primary = runtime.controllers.first, let pad = primary.extendedGamepad {
+                // Couch Mode non-streaming UI navigation: buttons are rising-edge triggered,
+                // D-pad & left stick repeat smoothly every 190ms.
+                var btnMask: UInt8 = 0
+                let swapAB = runtime.nintendoLayout == .alwaysSwap
+                    || (runtime.nintendoLayout == .auto && runtime.isNintendoSlot[0])
+                let confirmPressed = swapAB ? pad.buttonB.isPressed : pad.buttonA.isPressed
+                let backPressed = swapAB ? pad.buttonA.isPressed : pad.buttonB.isPressed
+                if confirmPressed { btnMask |= 1 << 0 }
+                if backPressed { btnMask |= 1 << 1 }
+                if pad.leftShoulder.isPressed { btnMask |= 1 << 2 }
+                if pad.rightShoulder.isPressed { btnMask |= 1 << 3 }
+
+                let rising = btnMask & ~runtime.lastMenuButtonsMask
+                runtime.lastMenuButtonsMask = btnMask
+
+                if (rising & (1 << 0)) != 0 { runtime.onMenuAction?(.confirm) }
+                if (rising & (1 << 1)) != 0 { runtime.onMenuAction?(.back) }
+                if (rising & (1 << 2)) != 0 { runtime.onMenuAction?(.prevTab) }
+                if (rising & (1 << 3)) != 0 { runtime.onMenuAction?(.nextTab) }
+
+                let lx = pad.leftThumbstick.xAxis.value
+                let ly = pad.leftThumbstick.yAxis.value
+                var dirAction: GamepadMenuAction?
+                if pad.dpad.up.isPressed || ly > 0.65 {
+                    dirAction = .up
+                } else if pad.dpad.down.isPressed || ly < -0.65 {
+                    dirAction = .down
+                } else if pad.dpad.left.isPressed || lx < -0.65 {
+                    dirAction = .left
+                } else if pad.dpad.right.isPressed || lx > 0.65 {
+                    dirAction = .right
+                }
+                if let dirAction, (now - runtime.lastMenuDirTime) >= 0.19 {
+                    runtime.lastMenuDirTime = now
+                    runtime.onMenuAction?(dirAction)
+                } else if dirAction == nil {
+                    runtime.lastMenuDirTime = 0
+                }
+            }
             if now - runtime.lastTelemetryPush >= 0.05 {
                 runtime.lastTelemetryPush = now
                 runtime.onNonStreamingUpdate?()
@@ -784,10 +864,19 @@ final class GamepadManager: ObservableObject {
                     exponent: exp
                 )
 
-                frame.a = pad.buttonA.isPressed ? 1 : 0
-                frame.b = pad.buttonB.isPressed ? 1 : 0
-                frame.x = pad.buttonX.isPressed ? 1 : 0
-                frame.y = pad.buttonY.isPressed ? 1 : 0
+                let shouldSwapNintendo = runtime.nintendoLayout == .alwaysSwap
+                    || (runtime.nintendoLayout == .auto && slot < runtime.isNintendoSlot.count && runtime.isNintendoSlot[slot])
+                if shouldSwapNintendo {
+                    frame.a = pad.buttonB.isPressed ? 1 : 0
+                    frame.b = pad.buttonA.isPressed ? 1 : 0
+                    frame.x = pad.buttonY.isPressed ? 1 : 0
+                    frame.y = pad.buttonX.isPressed ? 1 : 0
+                } else {
+                    frame.a = pad.buttonA.isPressed ? 1 : 0
+                    frame.b = pad.buttonB.isPressed ? 1 : 0
+                    frame.x = pad.buttonX.isPressed ? 1 : 0
+                    frame.y = pad.buttonY.isPressed ? 1 : 0
+                }
                 frame.dpad_up = pad.dpad.up.isPressed ? 1 : 0
                 frame.dpad_down = pad.dpad.down.isPressed ? 1 : 0
                 frame.dpad_left = pad.dpad.left.isPressed ? 1 : 0

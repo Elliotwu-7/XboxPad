@@ -3,6 +3,8 @@ import SwiftUI
 struct HomeConsolesView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var gamepadManager: GamepadManager
+    var isSelectedTab: Bool = true
+    @State private var focusedConsoleIndex: Int = 0
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSizeClass
     private var isRegularLayout: Bool { hSizeClass == .regular }
@@ -24,6 +26,10 @@ struct HomeConsolesView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
+                        if let update = appState.updateChecker.availableUpdate {
+                            updateAvailableBanner(update)
+                        }
+
                         statusDashboardHeader
 
                         sectionHeader(
@@ -39,8 +45,11 @@ struct HomeConsolesView: View {
                             emptyCard
                         } else {
                             LazyVGrid(columns: columns, spacing: 18) {
-                                ForEach(appState.consoles) { console in
-                                    consoleCard(console)
+                                ForEach(Array(appState.consoles.enumerated()), id: \.element.id) { idx, console in
+                                    let isFocused = gamepadManager.telemetry.connected
+                                        && isSelectedTab
+                                        && focusedConsoleIndex == idx
+                                    consoleCard(console, isGamepadFocused: isFocused)
                                 }
                             }
                         }
@@ -56,6 +65,34 @@ struct HomeConsolesView: View {
                 }
             }
             .navigationTitle("主机串流")
+            .onReceive(gamepadManager.menuNavigationPublisher) { action in
+                guard isSelectedTab, appState.activeStreamTarget == nil, !appState.consoles.isEmpty else { return }
+                let count = appState.consoles.count
+                switch action {
+                case .left, .up:
+                    focusedConsoleIndex = (focusedConsoleIndex - 1 + count) % count
+                    gamepadManager.haptics.playSubtleConfirmPulse()
+                case .right, .down:
+                    focusedConsoleIndex = (focusedConsoleIndex + 1) % count
+                    gamepadManager.haptics.playSubtleConfirmPulse()
+                case .confirm:
+                    let idx = min(max(focusedConsoleIndex, 0), count - 1)
+                    let console = appState.consoles[idx]
+                    gamepadManager.haptics.playSubtleConfirmPulse()
+                    if console.isStandby {
+                        Task { await appState.wakeConsole(console, thenStream: true) }
+                    } else {
+                        appState.activeStreamTarget = .home(console)
+                    }
+                default:
+                    break
+                }
+            }
+            .onChange(of: appState.consoles.count) { newCount in
+                if focusedConsoleIndex >= newCount {
+                    focusedConsoleIndex = max(newCount - 1, 0)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -236,9 +273,48 @@ struct HomeConsolesView: View {
         .padding(.horizontal, 2)
     }
 
+    private func updateAvailableBanner(_ update: AppUpdateInfo) -> some View {
+        HStack(spacing: 12) {
+            XboxIconBadge(systemName: "arrow.down.circle.fill", color: XboxTheme.emeraldBright, size: 38)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("发现 XboxPad 新版本 v\(update.version)")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.white)
+                    if !update.buildVersion.isEmpty {
+                        Text("Build \(update.buildVersion)")
+                            .font(.caption2.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(XboxTheme.emeraldBright)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(XboxTheme.emerald.opacity(0.18), in: Capsule())
+                    }
+                }
+                Text(update.changelog)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            Button {
+                appState.updateChecker.openUpdateDownload()
+            } label: {
+                Text(XboxPlatform.isMac ? "下载 DMG" : "前往更新")
+                    .font(.caption.bold())
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(XboxTheme.emeraldBright, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .xboxCard(cornerRadius: 18, highlighted: true)
+    }
+
     // MARK: - Clean Console Cards
 
-    private func consoleCard(_ console: XboxConsole) -> some View {
+    private func consoleCard(_ console: XboxConsole, isGamepadFocused: Bool = false) -> some View {
         let statusColor: Color = console.isOnline ? XboxTheme.emerald : (console.isStandby ? XboxTheme.warning : .gray)
 
         return VStack(alignment: .leading, spacing: 16) {
@@ -319,7 +395,15 @@ struct HomeConsolesView: View {
             }
         }
         .padding(18)
-        .xboxCard(cornerRadius: 20, highlighted: console.isOnline)
+        .xboxCard(cornerRadius: 20, highlighted: console.isOnline || isGamepadFocused)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(
+                    isGamepadFocused ? XboxTheme.emeraldBright : Color.clear,
+                    lineWidth: isGamepadFocused ? 2.2 : 0
+                )
+        )
+        .shadow(color: isGamepadFocused ? XboxTheme.emerald.opacity(0.32) : .clear, radius: 14, y: 4)
     }
 
     // MARK: - States & Minimal Footer
@@ -384,7 +468,11 @@ struct HomeConsolesView: View {
             Image(systemName: "hand.tap")
                 .font(.caption2)
                 .foregroundStyle(XboxTheme.emeraldBright.opacity(0.8))
-            Text("串流时轻触屏幕顶部或长按 View + Menu 呼出控制栏")
+            Text(
+                gamepadManager.telemetry.connected
+                    ? "手柄直控：方向键选择主机 · A 开始串流 · LB/RB 切换页签"
+                    : "串流时轻触屏幕顶部或长按 View + Menu 呼出控制栏"
+            )
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

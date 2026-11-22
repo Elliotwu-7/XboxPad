@@ -7,6 +7,7 @@ final class AppState: ObservableObject {
     let authService = XboxAuthService()
     let gamepadManager = GamepadManager()
     let authSyncService = AuthSyncService()
+    let updateChecker = AppUpdateChecker()
 
     @Published var settings: AppSettings {
         didSet {
@@ -38,6 +39,7 @@ final class AppState: ObservableObject {
     @Published var cloudRegions: [StreamingRegion] = []
 
     @Published var activeStreamTarget: StreamTarget?
+    @Published var isStreamOverlayOpen = false
     @Published var toastMessage: String?
 
     private var cancellables = Set<AnyCancellable>()
@@ -51,11 +53,22 @@ final class AppState: ObservableObject {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+        self.updateChecker.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     func bootstrap() async {
         isCheckingAuth = true
         defer { isCheckingAuth = false }
+
+        #if os(macOS)
+        Task { [weak self] in
+            await self?.updateChecker.checkForUpdates(silent: true)
+        }
+        #endif
 
         let hasLogin = await authService.hasStoredLogin(forceReload: true)
         guard hasLogin else {
@@ -305,6 +318,33 @@ final class AppState: ObservableObject {
                 toastMessage = nil
             }
         }
+    }
+
+    func isFavoriteCloudGame(_ titleId: String) -> Bool {
+        settings.favoriteCloudTitleIds.contains(titleId)
+    }
+
+    func toggleFavoriteCloudGame(_ titleId: String) {
+        if let idx = settings.favoriteCloudTitleIds.firstIndex(of: titleId) {
+            settings.favoriteCloudTitleIds.remove(at: idx)
+        } else {
+            settings.favoriteCloudTitleIds.insert(titleId, at: 0)
+        }
+    }
+
+    func isRecentCloudGame(_ game: CloudGame) -> Bool {
+        game.isRecent || settings.recentCloudTitleIds.contains(game.id)
+    }
+
+    func launchCloudGame(_ game: CloudGame) {
+        var recents = settings.recentCloudTitleIds
+        recents.removeAll { $0 == game.id }
+        recents.insert(game.id, at: 0)
+        if recents.count > 24 {
+            recents = Array(recents.prefix(24))
+        }
+        settings.recentCloudTitleIds = recents
+        activeStreamTarget = .cloud(game)
     }
 
     private func applyAuthSnapshot(_ snapshot: AuthSessionSnapshot) {

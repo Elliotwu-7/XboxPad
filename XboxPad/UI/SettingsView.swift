@@ -62,6 +62,7 @@ struct SettingsView: View {
                         case .video:
                             videoCoreCard
                             videoEnhancementCard
+                            videoColorGradingCard
                             audioAndSystemCard
                         case .network:
                             regionCard
@@ -433,7 +434,7 @@ struct SettingsView: View {
             icon: "slider.horizontal.3",
             tint: XboxTheme.info,
             footer: XboxPlatform.isMac
-                ? "macOS 串流快捷键：⌘F 切换原生全屏 · ⌥⌘M 呼出/收起顶栏 · ⌘, 实时打开设置与手柄。"
+                ? "macOS 快捷键：点击画面锁定 FPS 鼠标 · Esc 解锁 · ⌘F 全屏 · ⌥⌘M 顶栏 · ⇧⌘R 录屏 · ⇧⌘S 截屏 · ⇧⌘V 开麦 · ⇧⌘9 锁定 16:9。"
                 : "iPadOS / iOS 26+ 默认将实体西瓜键分配给 Apple Games；前往系统「设置 → 通用 → 游戏手柄 → 主屏幕按钮覆盖」添加 XboxPad 即可直呼 Xbox 菜单。"
         ) {
             sliderRow(
@@ -541,6 +542,28 @@ struct SettingsView: View {
                         .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
             }
+
+            cardDivider
+            menuPickerRow(
+                title: "Switch 手柄 A↔B / X↔Y 键位互换",
+                subtitle: "Switch Pro / Joy-Con 物理布局自动对齐 Xbox 确认/取消手感",
+                icon: "arrow.left.arrow.right.circle.fill",
+                color: .red,
+                currentLabel: appState.settings.nintendoButtonLayout.label
+            ) {
+                ForEach(NintendoButtonLayoutMode.allCases) { mode in
+                    Button(mode.label) { appState.settings.nintendoButtonLayout = mode }
+                }
+            }
+
+            cardDivider
+            toggleRow(
+                title: "麦克风硬件回声消除 (AEC)",
+                subtitle: "派对/联机开麦时自动过滤扬声器游戏声，防止队友听到回声",
+                icon: "waveform.badge.mic",
+                color: XboxTheme.emeraldBright,
+                isOn: $appState.settings.micEchoCancellation
+            )
 
             cardDivider
             toggleRow(
@@ -717,6 +740,80 @@ struct SettingsView: View {
         }
     }
 
+    private var videoColorGradingCard: some View {
+        let isDefault = abs(appState.settings.shadowLift) < 0.005
+            && abs(appState.settings.videoBrightness) < 0.005
+            && abs(appState.settings.videoContrast - 1.0) < 0.005
+            && abs(appState.settings.videoSaturation - 1.0) < 0.005
+
+        return settingsCard(
+            title: "实时画面调色（Metal GPU 零延迟直出）",
+            icon: "slider.horizontal.below.rectangle",
+            tint: .pink,
+            footer: "串流中打开设置拖动滑块可实时观察变化，尤其适合 FPS 暗处提亮索敌或自定义显示器色彩风格。"
+        ) {
+            sliderRow(
+                title: "暗部提亮 (Shadow Lift)",
+                valueText: "+\(Int((appState.settings.shadowLift * 100).rounded()))%",
+                tint: .orange,
+                value: $appState.settings.shadowLift,
+                range: 0.0...0.45,
+                step: 0.02
+            )
+
+            cardDivider
+            sliderRow(
+                title: "画面亮度",
+                valueText: String(format: "%+.0f%%", appState.settings.videoBrightness * 100),
+                tint: .yellow,
+                value: $appState.settings.videoBrightness,
+                range: -0.25...0.25,
+                step: 0.02
+            )
+
+            cardDivider
+            sliderRow(
+                title: "对比度",
+                valueText: "\(Int((appState.settings.videoContrast * 100).rounded()))%",
+                tint: XboxTheme.info,
+                value: $appState.settings.videoContrast,
+                range: 0.75...1.35,
+                step: 0.02
+            )
+
+            cardDivider
+            sliderRow(
+                title: "色彩饱和度",
+                valueText: "\(Int((appState.settings.videoSaturation * 100).rounded()))%",
+                tint: .pink,
+                value: $appState.settings.videoSaturation,
+                range: 0.60...1.45,
+                step: 0.02
+            )
+
+            if !isDefault {
+                cardDivider
+                Button {
+                    appState.settings.shadowLift = 0.0
+                    appState.settings.videoBrightness = 0.0
+                    appState.settings.videoContrast = 1.0
+                    appState.settings.videoSaturation = 1.0
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.counterclockwise")
+                        Text("恢复默认画面调色")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(XboxTheme.emeraldBright)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(XboxTheme.emerald.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     private var audioAndSystemCard: some View {
         settingsCard(title: "音频、投屏与监控", icon: "hifispeaker.2.fill", tint: XboxTheme.info) {
             toggleRow(
@@ -741,6 +838,15 @@ struct SettingsView: View {
                 icon: "airplayvideo",
                 color: XboxTheme.info,
                 isOn: $appState.settings.externalDisplayFullscreen
+            )
+            #elseif os(macOS)
+            cardDivider
+            toggleRow(
+                title: "串流窗口锁定 16:9 黄金比例",
+                subtitle: "窗口模式下缩放始终保持 16:9 无黑边（快捷键 ⇧⌘9）",
+                icon: "macwindow",
+                color: XboxTheme.info,
+                isOn: $appState.settings.macLock16x9Window
             )
             #endif
 
@@ -996,6 +1102,59 @@ struct SettingsView: View {
                 Text("XboxPad \(XboxTheme.appVersionDisplay)")
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
+            }
+
+            cardDivider
+            HStack(spacing: 10) {
+                XboxIconBadge(
+                    systemName: appState.updateChecker.availableUpdate != nil ? "arrow.down.circle.fill" : "arrow.triangle.2.circlepath",
+                    color: appState.updateChecker.availableUpdate != nil ? XboxTheme.emeraldBright : XboxTheme.info,
+                    size: 30
+                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(
+                        appState.updateChecker.availableUpdate.map { "发现新版本 v\($0.version)" }
+                            ?? "软件更新检测"
+                    )
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                    if !appState.updateChecker.lastStatusText.isEmpty {
+                        Text(appState.updateChecker.lastStatusText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if appState.updateChecker.isChecking {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(XboxTheme.emeraldBright)
+                } else if appState.updateChecker.availableUpdate != nil {
+                    Button {
+                        appState.updateChecker.openUpdateDownload()
+                    } label: {
+                        Text(XboxPlatform.isMac ? "下载 DMG" : "前往更新")
+                            .font(.caption.bold())
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(XboxTheme.emeraldBright, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button {
+                        Task { await appState.updateChecker.checkForUpdates(silent: false) }
+                    } label: {
+                        Text("检查更新")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.10), in: Capsule())
+                            .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 0.9))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             if !isInStreamModal {

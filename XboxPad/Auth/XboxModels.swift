@@ -445,6 +445,22 @@ struct LatencySample: Identifiable, Equatable {
     let pipeMs: Double
 }
 
+enum NintendoButtonLayoutMode: String, CaseIterable, Identifiable, Codable, Hashable {
+    case auto = "auto"
+    case alwaysSwap = "swap"
+    case xboxNative = "native"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .auto: return "自动（Switch 手柄自动互换）"
+        case .alwaysSwap: return "始终互换 A↔B / X↔Y"
+        case .xboxNative: return "保持原样（不互换）"
+        }
+    }
+}
+
 struct AppSettings: Codable, Equatable {
     var resolution: StreamResolution = .p1080HQ
     var latencyProfile: LatencyProfile = .low
@@ -479,6 +495,15 @@ struct AppSettings: Codable, Equatable {
     var keyboardMouseMode: KeyboardMouseMode = .gamepadEmulation
     var mouseSensitivity: Double = 1.0
     var virtualGamepadOpacity: Double = 0.58
+    var nintendoButtonLayout: NintendoButtonLayoutMode = .auto
+    var micEchoCancellation: Bool = true
+    var shadowLift: Double = 0.0
+    var videoBrightness: Double = 0.0
+    var videoContrast: Double = 1.0
+    var videoSaturation: Double = 1.0
+    var macLock16x9Window: Bool = false
+    var favoriteCloudTitleIds: [String] = []
+    var recentCloudTitleIds: [String] = []
     var menuComboEnabled: Bool = true
     var mapShareToNexus: Bool = true
     var showPerformanceHUD: Bool = true
@@ -499,6 +524,8 @@ struct AppSettings: Codable, Equatable {
         case rumbleEnabled, handleRumbleStrength, triggerRumbleStrength, fallbackTriggerToHandles
         case stickDeadzone, leftStickDeadzone, rightStickDeadzone, stickResponseCurve, triggerDeadzone
         case gyroAimMode, gyroSensitivity, gyroInvertY, keyboardMouseMode, mouseSensitivity, virtualGamepadOpacity
+        case nintendoButtonLayout, micEchoCancellation, shadowLift, videoBrightness, videoContrast, videoSaturation
+        case macLock16x9Window, favoriteCloudTitleIds, recentCloudTitleIds
         case menuComboEnabled, mapShareToNexus, showPerformanceHUD, showVirtualControlsWhenNoGamepad
         case useBuiltInRelay, iCloudKeychainSync, customIceUrl, customIceUser, customIcePass
     }
@@ -541,6 +568,15 @@ struct AppSettings: Codable, Equatable {
         keyboardMouseMode = try c.decodeIfPresent(KeyboardMouseMode.self, forKey: .keyboardMouseMode) ?? .gamepadEmulation
         mouseSensitivity = try c.decodeIfPresent(Double.self, forKey: .mouseSensitivity) ?? 1.0
         virtualGamepadOpacity = try c.decodeIfPresent(Double.self, forKey: .virtualGamepadOpacity) ?? 0.58
+        nintendoButtonLayout = try c.decodeIfPresent(NintendoButtonLayoutMode.self, forKey: .nintendoButtonLayout) ?? .auto
+        micEchoCancellation = try c.decodeIfPresent(Bool.self, forKey: .micEchoCancellation) ?? true
+        shadowLift = try c.decodeIfPresent(Double.self, forKey: .shadowLift) ?? 0.0
+        videoBrightness = try c.decodeIfPresent(Double.self, forKey: .videoBrightness) ?? 0.0
+        videoContrast = try c.decodeIfPresent(Double.self, forKey: .videoContrast) ?? 1.0
+        videoSaturation = try c.decodeIfPresent(Double.self, forKey: .videoSaturation) ?? 1.0
+        macLock16x9Window = try c.decodeIfPresent(Bool.self, forKey: .macLock16x9Window) ?? false
+        favoriteCloudTitleIds = try c.decodeIfPresent([String].self, forKey: .favoriteCloudTitleIds) ?? []
+        recentCloudTitleIds = try c.decodeIfPresent([String].self, forKey: .recentCloudTitleIds) ?? []
         menuComboEnabled = try c.decodeIfPresent(Bool.self, forKey: .menuComboEnabled) ?? true
         mapShareToNexus = try c.decodeIfPresent(Bool.self, forKey: .mapShareToNexus) ?? true
         showPerformanceHUD = try c.decodeIfPresent(Bool.self, forKey: .showPerformanceHUD) ?? true

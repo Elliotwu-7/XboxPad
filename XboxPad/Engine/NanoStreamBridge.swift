@@ -49,6 +49,8 @@ final class NanoStreamSession: ObservableObject {
     @Published private(set) var isMuted = false
     @Published private(set) var isMicEnabled = false
     @Published private(set) var micLevel: Float = 0
+    @Published private(set) var isRecording = false
+    @Published private(set) var recordingElapsedSec: Int = 0
     @Published private(set) var latencyHistory: [LatencySample] = []
     @Published private(set) var thermalState: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState
     @Published var toastMessage: String?
@@ -56,6 +58,7 @@ final class NanoStreamSession: ObservableObject {
     let videoRenderer = H264StreamRenderer()
     let audioEngine = OpusAudioEngine()
     let micEngine = MicrophoneEngine()
+    let recorder = StreamRecorder()
 
     private let authService: XboxAuthService
     private let gamepadManager: GamepadManager
@@ -147,6 +150,7 @@ final class NanoStreamSession: ObservableObject {
     private var disconnectWatchdogTask: Task<Void, Never>?
     private var stallWatchdogTask: Task<Void, Never>?
     private var toastClearTask: Task<Void, Never>?
+    private var recordingTimerTask: Task<Void, Never>?
     private var foregroundObserver: NSObjectProtocol?
     private var backgroundObserver: NSObjectProtocol?
     private var thermalObserver: NSObjectProtocol?
@@ -253,6 +257,13 @@ final class NanoStreamSession: ObservableObject {
         videoRenderer.updateHDRToneMode(settings.hdrToneMode)
         videoRenderer.updateDebanding(settings.debandingEnabled)
         videoRenderer.updateMetalFX(settings.metalFXUpscaling)
+        videoRenderer.updateColorGrading(
+            shadowLift: settings.shadowLift,
+            brightness: settings.videoBrightness,
+            contrast: settings.videoContrast,
+            saturation: settings.videoSaturation
+        )
+        micEngine.echoCancellationEnabled = settings.micEchoCancellation
         syncThermalProtection()
         audioEngine.setPacingMode(settings.framePacingMode)
         audioEngine.start(sampleRate: 48_000, channels: settings.stereoAudio ? 2 : 1)
@@ -289,6 +300,9 @@ final class NanoStreamSession: ObservableObject {
         micEngine.stop()
         isMicEnabled = false
         micLevel = 0
+        if isRecording {
+            stopRecordingSilently()
+        }
         audioEngine.stop()
 
         let handleToStop = handleBox.take()
@@ -331,6 +345,7 @@ final class NanoStreamSession: ObservableObject {
     }
 
     func toggleMicrophone() {
+        micEngine.echoCancellationEnabled = settings.micEchoCancellation
         if isMicEnabled {
             micEngine.stop()
             isMicEnabled = false
@@ -344,7 +359,8 @@ final class NanoStreamSession: ObservableObject {
                     if ok {
                         self.isMicEnabled = true
                         self.audioEngine.ensureRunning(sampleRate: 48_000, channels: self.settings.stereoAudio ? 2 : 1)
-                        self.showToast("语音开麦已开启（支持派对/联机）")
+                        let aecNote = self.settings.micEchoCancellation ? "· AEC 回声消除" : ""
+                        self.showToast("语音开麦已开启（支持派对/联机\(aecNote)）")
                     } else {
                         self.isMicEnabled = false
                         self.showToast(errMsg ?? "无法启动麦克风")
@@ -352,6 +368,60 @@ final class NanoStreamSession: ObservableObject {
                 }
             }
         }
+    }
+
+    func toggleRecording() {
+        if isRecording {
+            recordingTimerTask?.cancel()
+            recordingTimerTask = nil
+            videoRenderer.setDecodedFrameTap(nil)
+            audioEngine.setPCMTap(nil)
+            isRecording = false
+            recordingElapsedSec = 0
+            recorder.stop { [weak self] _, message in
+                Task { @MainActor [weak self] in
+                    self?.showToast(message)
+                }
+            }
+        } else {
+            let rec = recorder
+            rec.start { [weak self] ok, message in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if ok {
+                        self.isRecording = true
+                        self.recordingElapsedSec = 0
+                        self.videoRenderer.setDecodedFrameTap { pb in
+                            rec.appendVideoFrame(pb)
+                        }
+                        self.audioEngine.setPCMTap { samples, frameCount, sr, ch in
+                            rec.appendAudioPCM(samples, frameCount: frameCount, sampleRate: sr, channels: ch)
+                        }
+                        self.recordingTimerTask?.cancel()
+                        self.recordingTimerTask = Task { [weak self] in
+                            while !Task.isCancelled {
+                                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                                guard let self, !Task.isCancelled, self.isRecording else { return }
+                                self.recordingElapsedSec += 1
+                            }
+                        }
+                        self.showToast(message)
+                    } else {
+                        self.showToast(message)
+                    }
+                }
+            }
+        }
+    }
+
+    private func stopRecordingSilently() {
+        recordingTimerTask?.cancel()
+        recordingTimerTask = nil
+        videoRenderer.setDecodedFrameTap(nil)
+        audioEngine.setPCMTap(nil)
+        isRecording = false
+        recordingElapsedSec = 0
+        recorder.stop { _, _ in }
     }
 
     func captureScreenshotToPhotos(onCaptured: @escaping @MainActor (Bool) -> Void) {
@@ -391,6 +461,13 @@ final class NanoStreamSession: ObservableObject {
         videoRenderer.updateHDRToneMode(newSettings.hdrToneMode)
         videoRenderer.updateDebanding(newSettings.debandingEnabled)
         videoRenderer.updateMetalFX(newSettings.metalFXUpscaling)
+        videoRenderer.updateColorGrading(
+            shadowLift: newSettings.shadowLift,
+            brightness: newSettings.videoBrightness,
+            contrast: newSettings.videoContrast,
+            saturation: newSettings.videoSaturation
+        )
+        micEngine.echoCancellationEnabled = newSettings.micEchoCancellation
         syncThermalProtection()
         audioEngine.setPacingMode(newSettings.framePacingMode)
     }

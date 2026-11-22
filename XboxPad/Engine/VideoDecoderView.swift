@@ -48,6 +48,10 @@ final class H264StreamRenderer: @unchecked Sendable {
         var debandStrength: Float
         var pad1: Float
         var pad2: Float
+        var shadowLift: Float
+        var brightness: Float
+        var contrast: Float
+        var saturation: Float
     }
 
     private let decodeQueue = DispatchQueue(label: "com.elliot.xboxpad.video.decode", qos: .userInteractive)
@@ -68,6 +72,10 @@ final class H264StreamRenderer: @unchecked Sendable {
     private var hdrToneModeLocked: VideoHDRToneMode = .off
     private var debandingEnabledLocked: Bool = true
     private var metalFXEnabledLocked: Bool = true
+    private var shadowLiftLocked: Float = 0.0
+    private var brightnessLocked: Float = 0.0
+    private var contrastLocked: Float = 1.0
+    private var saturationLocked: Float = 1.0
     private var thermalEDRMultiplierLocked: Float = 1.0
     private var isMetalFXActiveLocked: Bool = false
     private var currentEDRHeadroomLocked: Float = 1.0
@@ -133,6 +141,13 @@ final class H264StreamRenderer: @unchecked Sendable {
     var onNeedKeyframe: (() -> Void)?
     var onFirstFrameRendered: (() -> Void)?
     var onDecodeTiming: ((Double) -> Void)?
+    private var decodedFrameTap: (@Sendable (CVPixelBuffer) -> Void)?
+
+    func setDecodedFrameTap(_ tap: (@Sendable (CVPixelBuffer) -> Void)?) {
+        decodeQueue.async { [weak self] in
+            self?.decodedFrameTap = tap
+        }
+    }
 
     init() {
         setupAppLifecycleObservers()
@@ -288,6 +303,28 @@ final class H264StreamRenderer: @unchecked Sendable {
         os_unfair_lock_lock(&frameLock)
         thermalEDRMultiplierLocked = clamped
         os_unfair_lock_unlock(&frameLock)
+    }
+
+    func updateColorGrading(shadowLift: Double, brightness: Double, contrast: Double, saturation: Double) {
+        let sl = Float(max(min(shadowLift, 0.5), 0.0))
+        let br = Float(max(min(brightness, 0.35), -0.35))
+        let ct = Float(max(min(contrast, 1.5), 0.6))
+        let st = Float(max(min(saturation, 1.6), 0.4))
+        os_unfair_lock_lock(&frameLock)
+        let changed = abs(shadowLiftLocked - sl) > 0.001
+            || abs(brightnessLocked - br) > 0.001
+            || abs(contrastLocked - ct) > 0.001
+            || abs(saturationLocked - st) > 0.001
+        shadowLiftLocked = sl
+        brightnessLocked = br
+        contrastLocked = ct
+        saturationLocked = st
+        let hasFrame = latestPixelBuffer != nil
+        os_unfair_lock_unlock(&frameLock)
+
+        if changed && hasFrame {
+            triggerRender(forceRedraw: true)
+        }
     }
 
     var isMetalFXActive: Bool {
@@ -874,6 +911,7 @@ final class H264StreamRenderer: @unchecked Sendable {
             )
         }
         onDecodeTiming?(decodeMs)
+        decodedFrameTap?(pixelBuffer)
 
         publishDecodedFrame(pixelBuffer, arrivalTime: now)
 
@@ -1017,6 +1055,10 @@ final class H264StreamRenderer: @unchecked Sendable {
             let hdrMode = hdrToneModeLocked
             let debandStrength: Float = debandingEnabledLocked ? 1.0 : 0.0
             let metalFXEnabled = metalFXEnabledLocked
+            let shadowLift = shadowLiftLocked
+            let brightness = brightnessLocked
+            let contrast = contrastLocked
+            let saturation = saturationLocked
             let thermalMult = thermalEDRMultiplierLocked
             let edrHeadroom = currentEDRHeadroomLocked
             let interpPhase = latestInterpPhaseLocked
@@ -1032,6 +1074,10 @@ final class H264StreamRenderer: @unchecked Sendable {
                 hdrToneMode: hdrMode,
                 debandStrength: debandStrength,
                 metalFXEnabled: metalFXEnabled,
+                shadowLift: shadowLift,
+                brightness: brightness,
+                contrast: contrast,
+                saturation: saturation,
                 thermalEDRMultiplier: thermalMult,
                 edrHeadroom: edrHeadroom,
                 interpPhase: interpPhase,
@@ -1115,6 +1161,10 @@ final class H264StreamRenderer: @unchecked Sendable {
             float debandStrength;
             float pad1;
             float pad2;
+            float shadowLift;
+            float brightness;
+            float contrast;
+            float saturation;
         };
 
         struct VertexOut {
@@ -1221,6 +1271,22 @@ final class H264StreamRenderer: @unchecked Sendable {
             return select(pow((safeC + 0.055) / 1.055, float3(2.4)), safeC / 12.92, safeC <= float3(0.04045));
         }
 
+        static inline float3 applyColorGrade(float3 srgb, constant RenderUniforms &u) {
+            float3 c = srgb;
+            if (u.shadowLift > 0.001) {
+                float3 inv = 1.0 - c;
+                c = saturate(c + u.shadowLift * inv * inv * inv * 1.15);
+            }
+            if (abs(u.brightness) > 0.001 || abs(u.contrast - 1.0) > 0.001) {
+                c = saturate((c - 0.5) * u.contrast + 0.5 + u.brightness);
+            }
+            if (abs(u.saturation - 1.0) > 0.001) {
+                float luma = dot(c, float3(0.2126, 0.7152, 0.0722));
+                c = saturate(mix(float3(luma), c, u.saturation));
+            }
+            return c;
+        }
+
         static inline float3 applyAutoHDR(float3 srgb, constant RenderUniforms &u) {
             float3 lin = srgbToLinear(srgb);
             if (u.hdrMode < 0.5) {
@@ -1269,6 +1335,7 @@ final class H264StreamRenderer: @unchecked Sendable {
             float ySharp = sampleSharpenedLuma(lumaTex, uv, u);
             float yClean = sampleDebandedLuma(lumaTex, uv, u, ySharp);
             float3 rgb = decodeYUV(yClean, chromaTex.sample(s, uv).rg, u);
+            rgb = applyColorGrade(rgb, u);
             return float4(applyAutoHDR(rgb, u), 1.0);
         }
 
@@ -1307,7 +1374,7 @@ final class H264StreamRenderer: @unchecked Sendable {
             float consistency = 1.0 - smoothstep(0.14, 0.42, warpDiff);
             float blendW = conf * consistency;
             float3 blended = mix(rgbPrev, rgbCurr, phase);
-            float3 srgbOut = mix(rgbExactCurr, blended, blendW);
+            float3 srgbOut = applyColorGrade(mix(rgbExactCurr, blended, blendW), u);
             return float4(applyAutoHDR(srgbOut, u), 1.0);
         }
 
@@ -1416,6 +1483,10 @@ final class H264StreamRenderer: @unchecked Sendable {
         hdrToneMode: VideoHDRToneMode,
         debandStrength: Float,
         metalFXEnabled: Bool,
+        shadowLift: Float,
+        brightness: Float,
+        contrast: Float,
+        saturation: Float,
         thermalEDRMultiplier: Float,
         edrHeadroom: Float,
         interpPhase: Float,
@@ -1589,7 +1660,11 @@ final class H264StreamRenderer: @unchecked Sendable {
                 hdrKnee: hdrKnee,
                 debandStrength: debandStrength,
                 pad1: interpPhase,
-                pad2: 0.0
+                pad2: 0.0,
+                shadowLift: shadowLift,
+                brightness: brightness,
+                contrast: contrast,
+                saturation: saturation
             )
 
             // Pass 1: Decode NV12 + CAS + Deband + (120Hz Optical Flow) + Auto-HDR
