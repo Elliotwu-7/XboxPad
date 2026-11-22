@@ -17,6 +17,7 @@ struct StreamPlayerView: View {
     @State private var showMoreDrawer = false
     @State private var showHUD: Bool
     @State private var manualVirtualGamepad = false
+    @State private var isEditingVirtualLayout = false
     @State private var showCastSheet = false
     @State private var showSettingsSheet = false
     @State private var isBlackoutDimmerActive = false
@@ -123,11 +124,22 @@ struct StreamPlayerView: View {
                 .allowsHitTesting(false)
             }
 
+            // Optional FPS Center Crosshair Overlay
+            if appState.settings.crosshairEnabled, !externalDisplay.isRenderingExternally, case .streaming = session.connectionState {
+                FPSCrosshairOverlay(style: appState.settings.crosshairStyle)
+                    .allowsHitTesting(false)
+            }
+
             // Full multi-touch virtual gamepad overlay
             if shouldShowVirtualGamepad, !isBlackoutDimmerActive {
                 VirtualGamepadOverlay(
                     gamepadManager: appState.gamepadManager,
-                    opacity: appState.settings.virtualGamepadOpacity
+                    opacity: appState.settings.virtualGamepadOpacity,
+                    scaleMultiplier: appState.settings.virtualGamepadScale,
+                    floatingStick: appState.settings.virtualGamepadFloatingStick,
+                    hapticTap: appState.settings.virtualGamepadHapticTap,
+                    isEditingLayout: $isEditingVirtualLayout,
+                    savedOffsets: $appState.settings.virtualGamepadOffsets
                 )
                 .ignoresSafeArea()
             }
@@ -227,6 +239,9 @@ struct StreamPlayerView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .xboxpadToggleRecording)) { _ in
             session.toggleRecording()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadSaveReplay)) { _ in
+            session.saveInstantReplay()
         }
         .onReceive(NotificationCenter.default.publisher(for: .xboxpadToggleMic)) { _ in
             session.toggleMicrophone()
@@ -552,6 +567,17 @@ struct StreamPlayerView: View {
                         session.toggleRecording()
                     }
 
+                    if appState.settings.instantReplayEnabled {
+                        overlayChipButton(
+                            title: session.isSavingReplay ? "保存中" : "回放30s",
+                            systemImage: "clock.arrow.circlepath",
+                            active: session.isSavingReplay,
+                            activeColor: .orange
+                        ) {
+                            session.saveInstantReplay()
+                        }
+                    }
+
                     overlayChipButton(
                         title: "设置",
                         systemImage: "slider.horizontal.3",
@@ -643,6 +669,39 @@ struct StreamPlayerView: View {
             ) {
                 session.toggleRecording()
             }
+
+            drawerTile(
+                title: "回放30s",
+                systemImage: "clock.arrow.circlepath",
+                active: session.isSavingReplay,
+                activeColor: .orange
+            ) {
+                closeOverlayBar()
+                session.saveInstantReplay()
+            }
+
+            drawerTile(
+                title: appState.settings.crosshairEnabled ? "准星开" : "FPS准星",
+                systemImage: "scope",
+                active: appState.settings.crosshairEnabled,
+                activeColor: XboxTheme.emeraldBright
+            ) {
+                appState.settings.crosshairEnabled.toggle()
+            }
+
+            #if os(iOS)
+            if shouldShowVirtualGamepad {
+                drawerTile(
+                    title: isEditingVirtualLayout ? "完成排版" : "按键排版",
+                    systemImage: "hand.draw.fill",
+                    active: isEditingVirtualLayout,
+                    activeColor: .teal
+                ) {
+                    closeOverlayBar()
+                    isEditingVirtualLayout.toggle()
+                }
+            }
+            #endif
 
             drawerTile(
                 title: manualVirtualGamepad ? "触控开" : "触控手柄",
@@ -1104,6 +1163,44 @@ private struct LatencySparklineView: View {
                     }
                 }
                 .stroke(XboxTheme.emeraldBright, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            }
+        }
+    }
+}
+
+private struct FPSCrosshairOverlay: View {
+    let style: CrosshairStyle
+
+    var body: some View {
+        let color = XboxTheme.emeraldBright.opacity(0.92)
+        ZStack {
+            switch style {
+            case .dot:
+                Circle()
+                    .fill(color)
+                    .frame(width: 5, height: 5)
+                    .shadow(color: .black.opacity(0.85), radius: 1.5)
+            case .plus:
+                Group {
+                    Rectangle().fill(color).frame(width: 18, height: 1.8)
+                    Rectangle().fill(color).frame(width: 1.8, height: 18)
+                }
+                .shadow(color: .black.opacity(0.85), radius: 1.5)
+            case .dotPlus:
+                Group {
+                    Circle().fill(color).frame(width: 3.5, height: 3.5)
+                    Rectangle().fill(color).frame(width: 7, height: 1.6).offset(x: -9)
+                    Rectangle().fill(color).frame(width: 7, height: 1.6).offset(x: 9)
+                    Rectangle().fill(color).frame(width: 1.6, height: 7).offset(y: -9)
+                    Rectangle().fill(color).frame(width: 1.6, height: 7).offset(y: 9)
+                }
+                .shadow(color: .black.opacity(0.85), radius: 1.5)
+            case .circleDot:
+                Group {
+                    Circle().stroke(color, lineWidth: 1.5).frame(width: 22, height: 22)
+                    Circle().fill(color).frame(width: 3.8, height: 3.8)
+                }
+                .shadow(color: .black.opacity(0.85), radius: 1.5)
             }
         }
     }

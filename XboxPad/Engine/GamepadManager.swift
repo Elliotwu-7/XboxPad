@@ -43,7 +43,6 @@ final class GamepadManager: ObservableObject {
             if selectedSlotIndex < connectedControllers.count {
                 let target = connectedControllers[selectedSlotIndex]
                 activeController = target
-                haptics.bind(controller: target)
                 refreshTelemetrySnapshot()
             }
         }
@@ -140,6 +139,8 @@ final class GamepadManager: ObservableObject {
         var menuComboEnabled = true
         var nintendoLayout: NintendoButtonLayoutMode = .auto
         var isNintendoSlot: [Bool] = [false, false, false, false]
+        var buttonMap = GamepadButtonMap()
+        var keyBindings = KeyboardBindingMap()
         var virtualOverrides = XboxPadInputFrame()
         var virtualLeftX: Float = 0
         var virtualLeftY: Float = 0
@@ -212,6 +213,8 @@ final class GamepadManager: ObservableObject {
         let share = settings.mapShareToNexus
         let combo = settings.menuComboEnabled
         let ninLayout = settings.nintendoButtonLayout
+        let bMap = settings.gamepadButtonMap
+        let kBind = settings.keyboardBindingMap
         inputQueue.async { [runtime] in
             runtime.leftDeadzone = ldz
             runtime.rightDeadzone = rdz
@@ -225,6 +228,8 @@ final class GamepadManager: ObservableObject {
             runtime.mapShareToNexus = share
             runtime.menuComboEnabled = combo
             runtime.nintendoLayout = ninLayout
+            runtime.buttonMap = bMap
+            runtime.keyBindings = kBind
             if gMode == .off {
                 runtime.deviceGyroX = 0
                 runtime.deviceGyroY = 0
@@ -485,14 +490,14 @@ final class GamepadManager: ObservableObject {
         if allPads.isEmpty {
             selectedSlotIndex = 0
             activeController = nil
-            haptics.bind(controller: nil)
+            haptics.bindControllers([], primarySlot: 0)
         } else {
             if selectedSlotIndex >= allPads.count {
                 selectedSlotIndex = 0
             }
             let primary = allPads[selectedSlotIndex]
             activeController = primary
-            haptics.bind(controller: primary)
+            haptics.bindControllers(allPads, primarySlot: selectedSlotIndex)
         }
 
         bindHardwareKeyboardAndMouse()
@@ -900,12 +905,37 @@ final class GamepadManager: ObservableObject {
                     && (controller.physicalInputProfile.buttons[GCInputButtonShare]?.isPressed ?? false)
                 frame.nexus = (homePressed || sharePressed) ? 1 : 0
 
-                frame.left_thumb_x = lx
-                frame.left_thumb_y = -ly
-                frame.right_thumb_x = rx
-                frame.right_thumb_y = -ry
-                frame.left_trigger = applyTriggerDeadzone(pad.leftTrigger.value, deadzone: runtime.triggerDeadzone)
-                frame.right_trigger = applyTriggerDeadzone(pad.rightTrigger.value, deadzone: runtime.triggerDeadzone)
+                let bMap = runtime.buttonMap
+                let outLX = bMap.swapSticks ? rx : lx
+                let outLYRaw = bMap.swapSticks ? ry : ly
+                let outRX = bMap.swapSticks ? lx : rx
+                let outRYRaw = bMap.swapSticks ? ly : ry
+                frame.left_thumb_x = outLX
+                frame.left_thumb_y = bMap.invertLeftY ? outLYRaw : -outLYRaw
+                frame.right_thumb_x = outRX
+                frame.right_thumb_y = bMap.invertRightY ? outRYRaw : -outRYRaw
+
+                let rawLT = applyTriggerDeadzone(pad.leftTrigger.value, deadzone: runtime.triggerDeadzone)
+                let rawRT = applyTriggerDeadzone(pad.rightTrigger.value, deadzone: runtime.triggerDeadzone)
+                if bMap.swapTriggersAndBumpers {
+                    let origLB = frame.left_shoulder
+                    let origRB = frame.right_shoulder
+                    frame.left_shoulder = rawLT > 0.25 ? 1 : 0
+                    frame.right_shoulder = rawRT > 0.25 ? 1 : 0
+                    frame.left_trigger = origLB > 0 ? 1.0 : 0.0
+                    frame.right_trigger = origRB > 0 ? 1.0 : 0.0
+                } else {
+                    frame.left_trigger = rawLT
+                    frame.right_trigger = rawRT
+                }
+
+                // Xbox Elite Series 2 back paddles (P1–P4) custom mapping
+                if let xboxPad = pad as? GCXboxGamepad {
+                    if xboxPad.paddleButton1?.isPressed == true { applyPaddleAction(bMap.paddle1, to: &frame) }
+                    if xboxPad.paddleButton2?.isPressed == true { applyPaddleAction(bMap.paddle2, to: &frame) }
+                    if xboxPad.paddleButton3?.isPressed == true { applyPaddleAction(bMap.paddle3, to: &frame) }
+                    if xboxPad.paddleButton4?.isPressed == true { applyPaddleAction(bMap.paddle4, to: &frame) }
+                }
             }
         }
 
@@ -966,23 +996,24 @@ final class GamepadManager: ObservableObject {
                     frame.right_thumb_x = max(-1.0, min(1.0, frame.right_thumb_x + runtime.mouseVelX))
                     frame.right_thumb_y = max(-1.0, min(1.0, frame.right_thumb_y - runtime.mouseVelY))
                 }
+                let kb = runtime.keyBindings
                 if (runtime.mouseButtonsMask & 1) != 0 { frame.right_trigger = 1.0 }
                 if (runtime.mouseButtonsMask & 2) != 0 { frame.left_trigger = 1.0 }
-                if (runtime.mouseButtonsMask & 4) != 0 || keys.contains(.keyV) { frame.right_thumb = 1 }
-                if keys.contains(.spacebar) || keys.contains(.returnOrEnter) { frame.a = 1 }
-                if keys.contains(.keyC) || keys.contains(.leftControl) || keys.contains(.deleteOrBackspace) { frame.b = 1 }
-                if keys.contains(.keyR) || keys.contains(.keyX) { frame.x = 1 }
-                if keys.contains(.keyE) || keys.contains(.keyF) || keys.contains(.keyY) { frame.y = 1 }
-                if keys.contains(.keyQ) || keys.contains(.one) { frame.left_shoulder = 1 }
-                if keys.contains(.keyG) || keys.contains(.two) { frame.right_shoulder = 1 }
-                if keys.contains(.leftShift) { frame.left_thumb = 1 }
+                if (runtime.mouseButtonsMask & 4) != 0 || Self.isKeyPressed(kb.r3Key, in: keys) { frame.right_thumb = 1 }
+                if Self.isKeyPressed(kb.aKey, in: keys) || keys.contains(.returnOrEnter) { frame.a = 1 }
+                if Self.isKeyPressed(kb.bKey, in: keys) || keys.contains(.deleteOrBackspace) { frame.b = 1 }
+                if Self.isKeyPressed(kb.xKey, in: keys) { frame.x = 1 }
+                if Self.isKeyPressed(kb.yKey, in: keys) { frame.y = 1 }
+                if Self.isKeyPressed(kb.lbKey, in: keys) { frame.left_shoulder = 1 }
+                if Self.isKeyPressed(kb.rbKey, in: keys) { frame.right_shoulder = 1 }
+                if Self.isKeyPressed(kb.l3Key, in: keys) { frame.left_thumb = 1 }
                 if keys.contains(.upArrow) { frame.dpad_up = 1 }
                 if keys.contains(.downArrow) { frame.dpad_down = 1 }
                 if keys.contains(.leftArrow) { frame.dpad_left = 1 }
                 if keys.contains(.rightArrow) { frame.dpad_right = 1 }
-                if keys.contains(.tab) { frame.view = 1 }
-                if keys.contains(.escape) { frame.menu = 1 }
-                if keys.contains(.F12) { frame.nexus = 1 }
+                if Self.isKeyPressed(kb.viewKey, in: keys) { frame.view = 1 }
+                if Self.isKeyPressed(kb.menuKey, in: keys) { frame.menu = 1 }
+                if Self.isKeyPressed(kb.nexusKey, in: keys) { frame.nexus = 1 }
             }
         }
 
@@ -1013,6 +1044,57 @@ final class GamepadManager: ObservableObject {
         }
 
         return frame
+    }
+
+    private nonisolated static func applyPaddleAction(_ action: PaddleAction, to frame: inout XboxPadInputFrame) {
+        switch action {
+        case .none: break
+        case .a: frame.a = 1
+        case .b: frame.b = 1
+        case .x: frame.x = 1
+        case .y: frame.y = 1
+        case .lb: frame.left_shoulder = 1
+        case .rb: frame.right_shoulder = 1
+        case .l3: frame.left_thumb = 1
+        case .r3: frame.right_thumb = 1
+        case .view: frame.view = 1
+        case .menu: frame.menu = 1
+        }
+    }
+
+    private nonisolated static func isKeyPressed(_ name: String, in keys: Set<GCKeyCode>) -> Bool {
+        guard let code = gcKeyCode(forName: name) else { return false }
+        return keys.contains(code)
+    }
+
+    private nonisolated static func gcKeyCode(forName name: String) -> GCKeyCode? {
+        switch name {
+        case "Space": return .spacebar
+        case "Enter": return .returnOrEnter
+        case "Tab": return .tab
+        case "Esc": return .escape
+        case "LShift": return .leftShift
+        case "LCtrl": return .leftControl
+        case "LAlt": return .leftAlt
+        case "Backspace": return .deleteOrBackspace
+        case "Q": return .keyQ
+        case "E": return .keyE
+        case "R": return .keyR
+        case "T": return .keyT
+        case "F": return .keyF
+        case "G": return .keyG
+        case "Z": return .keyZ
+        case "X": return .keyX
+        case "C": return .keyC
+        case "V": return .keyV
+        case "B": return .keyB
+        case "1": return .one
+        case "2": return .two
+        case "3": return .three
+        case "4": return .four
+        case "F12": return .F12
+        default: return nil
+        }
     }
 
     private nonisolated static func applyCircularDeadzoneAndCurve(

@@ -296,17 +296,28 @@ struct HomeConsolesView: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 8)
-            Button {
-                appState.updateChecker.openUpdateDownload()
-            } label: {
-                Text(XboxPlatform.isMac ? "下载 DMG" : "前往更新")
-                    .font(.caption.bold())
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(XboxTheme.emeraldBright, in: Capsule())
+            if appState.updateChecker.isDownloadingUpdate {
+                HStack(spacing: 6) {
+                    ProgressView(value: appState.updateChecker.downloadProgress)
+                        .frame(width: 68)
+                        .tint(XboxTheme.emeraldBright)
+                    Text("\(Int((appState.updateChecker.downloadProgress * 100).rounded()))%")
+                        .font(.caption2.monospacedDigit().bold())
+                        .foregroundStyle(XboxTheme.emeraldBright)
+                }
+            } else {
+                Button {
+                    appState.updateChecker.openUpdateDownload()
+                } label: {
+                    Text(XboxPlatform.isMac ? "一键下载更新" : "前往更新")
+                        .font(.caption.bold())
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(XboxTheme.emeraldBright, in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(14)
         .xboxCard(cornerRadius: 18, highlighted: true)

@@ -1,7 +1,9 @@
 # Xcode & build outputs
 build/
+build-artifacts/
 DerivedData/
 *.ipa
+*.dmg
 *.xcarchive
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/

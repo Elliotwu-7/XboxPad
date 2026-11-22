@@ -97,6 +97,7 @@ struct PeerSharedState {
     max_touchpoints: u8,
     coop: bool,
     max_video_delay_ms: u64,
+    max_video_bitrate_kbps: u32,
 }
 
 impl PeerSharedState {
@@ -105,6 +106,7 @@ impl PeerSharedState {
         coop: bool,
         has_custom_ice: bool,
         max_video_delay_ms: u64,
+        max_video_bitrate_kbps: u32,
     ) -> Self {
         Self {
             local_candidates: Mutex::new(Vec::new()),
@@ -140,6 +142,7 @@ impl PeerSharedState {
             } else {
                 max_video_delay_ms
             },
+            max_video_bitrate_kbps,
         }
     }
 
@@ -212,12 +215,13 @@ impl RealNanoPeerConnection {
         is_home_platform: bool,
         has_custom_ice: bool,
         max_video_delay_ms: u64,
+        max_video_bitrate_kbps: u32,
         video_sink: Option<Arc<dyn VideoFrameSink + Send + Sync>>,
         audio_sink: Option<Arc<dyn AudioFrameSink + Send + Sync>>,
         event_sink: Option<Arc<dyn SessionEventSink + Send + Sync>>,
     ) -> Result<Self, NanoError> {
         crate::nano_log!(
-            "peer new transceivers={} channels={} iceServers={} networkMode={} isHome={} customIce={} maxVideoDelayMs={} videoSink={} audioSink={}",
+            "peer new transceivers={} channels={} iceServers={} networkMode={} isHome={} customIce={} maxVideoDelayMs={} maxBitrateKbps={} videoSink={} audioSink={}",
             plan.transceivers.len(),
             plan.channels.len(),
             plan.ice_servers.len(),
@@ -225,6 +229,7 @@ impl RealNanoPeerConnection {
             is_home_platform,
             has_custom_ice,
             max_video_delay_ms,
+            max_video_bitrate_kbps,
             video_sink.is_some(),
             audio_sink.is_some()
         );
@@ -233,6 +238,7 @@ impl RealNanoPeerConnection {
             coop,
             has_custom_ice,
             max_video_delay_ms,
+            max_video_bitrate_kbps,
         ));
         let (api, udp_mux) = build_api(
             network_mode,
@@ -666,8 +672,21 @@ impl RealNanoPeerConnection {
                 }
             }
         }
-        server_offer_sdp = boost_video_bitrate_sdp(&server_offer_sdp, 10_000, 20_000, 40_000);
-        crate::nano_log!("create offer video bitrate sdp boost applied (10/20/40 Mbps)");
+        let (min_kbps, start_kbps, max_kbps) = if self.shared.max_video_bitrate_kbps > 0 {
+            let max_k = self.shared.max_video_bitrate_kbps.clamp(2_000, 80_000);
+            let start_k = ((max_k as u64 * 7) / 10).clamp(2_000, max_k as u64) as u32;
+            let min_k = (max_k / 4).clamp(1_000, start_k);
+            (min_k, start_k, max_k)
+        } else {
+            (10_000, 20_000, 40_000)
+        };
+        server_offer_sdp = boost_video_bitrate_sdp(&server_offer_sdp, min_kbps, start_kbps, max_kbps);
+        crate::nano_log!(
+            "create offer video bitrate sdp boost applied ({}/{}/{} kbps)",
+            min_kbps,
+            start_kbps,
+            max_kbps
+        );
         crate::nano_log!("create offer set local description begin");
         timeout(
             Duration::from_secs(8),
@@ -1072,12 +1091,22 @@ impl RealNanoPeerConnection {
         let video_ssrc = self.shared.video_ssrc.load(Ordering::Relaxed);
         let live_rtt_ms = stats.round_trip_time_ms.unwrap_or(0.0);
         let live_loss_pct = stats.packet_loss_pct.unwrap_or(0.0);
+        let custom_cap_bps: Option<f32> = if self.shared.max_video_bitrate_kbps > 0 {
+            Some((self.shared.max_video_bitrate_kbps.clamp(2_000, 80_000) as f32) * 1000.0)
+        } else {
+            None
+        };
         let remb_target_bps = if video_ssrc != 0 && live_loss_pct < 0.2 {
-            match stats.route_kind {
-                1 if live_rtt_ms < 30.0 => Some(REMB_TARGET_BITRATE_BPS),
+            let auto_bps = match stats.route_kind {
+                1 if live_rtt_ms < 30.0 => Some(custom_cap_bps.unwrap_or(REMB_TARGET_BITRATE_BPS)),
                 2 if live_rtt_ms < 50.0 => Some(32_000_000.0),
                 2 if live_rtt_ms < 95.0 => Some(22_000_000.0),
-                _ => None,
+                _ => custom_cap_bps.filter(|&cap| cap <= 18_000_000.0),
+            };
+            match (auto_bps, custom_cap_bps) {
+                (Some(auto), Some(cap)) => Some(auto.min(cap)),
+                (Some(auto), None) => Some(auto),
+                (None, _) => None,
             }
         } else {
             None

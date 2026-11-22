@@ -27,6 +27,7 @@ typedef struct XboxPadConfig {
     uint8_t network_mode;            // 0=auto (IPv4+IPv6), 1=IPv4 only, 2=IPv6 only
     uint32_t max_video_delay_ms;     // Low-latency jitter cap (e.g. 60..220; 0 uses default 80ms)
     const char *force_region_ip;     // Optional X-Forwarded-For IP for cross-region xCloud
+    uint32_t max_video_bitrate_kbps; // 0=auto (40Mbps); custom ceiling 2000..80000 kbps
 } XboxPadConfig;
 
 typedef struct XboxPadInputFrame {
@@ -56,6 +57,7 @@ typedef struct XboxPadInputFrame {
 } XboxPadInputFrame;
 
 typedef struct XboxPadRumble {
+    uint8_t gamepad_index;   // Player slot 0..3 (P1..P4)
     uint16_t start_delay_ms;
     uint16_t duration_ms;
     uint16_t delay_ms;

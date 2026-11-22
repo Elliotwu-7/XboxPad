@@ -291,6 +291,8 @@ extension Notification.Name {
     static let xboxpadOpenSettings = Notification.Name("com.elliot.xboxpad.cmd.openSettings")
     static let xboxpadCaptureScreenshot = Notification.Name("com.elliot.xboxpad.cmd.captureScreenshot")
     static let xboxpadToggleRecording = Notification.Name("com.elliot.xboxpad.cmd.toggleRecording")
+    static let xboxpadSaveReplay = Notification.Name("com.elliot.xboxpad.cmd.saveReplay")
     static let xboxpadToggleMic = Notification.Name("com.elliot.xboxpad.cmd.toggleMic")
     static let xboxpadCheckUpdates = Notification.Name("com.elliot.xboxpad.cmd.checkUpdates")
+    static let xboxpadQuickLaunchConsole = Notification.Name("com.elliot.xboxpad.cmd.quickLaunchConsole")
 }

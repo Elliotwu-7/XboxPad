@@ -33,6 +33,7 @@ pub struct NanoSessionConfig {
     pub coop: bool,
     pub network_mode: u8, // 0=auto (IPv4+IPv6), 1=IPv4 only, 2=IPv6 only
     pub max_video_delay_ms: u64,
+    pub max_video_bitrate_kbps: u32,
     pub force_region_ip: Option<String>,
     pub extra_ice_servers: Vec<IceServer>,
     pub video_sink: Option<Arc<dyn VideoFrameSink + Send + Sync>>,
@@ -238,6 +239,7 @@ async fn run_session(
         is_home_platform,
         has_custom_ice,
         config.max_video_delay_ms,
+        config.max_video_bitrate_kbps,
         config.video_sink.clone(),
         config.audio_sink.clone(),
         config.event_sink.clone(),

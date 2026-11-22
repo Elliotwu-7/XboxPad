@@ -179,6 +179,7 @@ pub struct MetadataFrame {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RumbleData {
+    pub gamepad_index: u8,
     pub start_delay_ms: u16,
     pub duration_ms: u16,
     pub weak_magnitude: f32,
@@ -543,7 +544,7 @@ pub fn parse_server_message(data: &[u8]) -> Option<InputServerMessage> {
             return None;
         }
         let _rumble_type = data[offset];
-        let _gamepad_index = data[offset + 1];
+        let gamepad_index = data[offset + 1].min(3);
         let left_motor_percent = data[offset + 2] as f32 / 100.0;
         let right_motor_percent = data[offset + 3] as f32 / 100.0;
         let left_trigger_percent = data[offset + 4] as f32 / 100.0;
@@ -553,6 +554,7 @@ pub fn parse_server_message(data: &[u8]) -> Option<InputServerMessage> {
         let repeat = data[offset + 10];
 
         message.rumble = Some(RumbleData {
+            gamepad_index,
             start_delay_ms: 0,
             duration_ms,
             weak_magnitude: right_motor_percent,

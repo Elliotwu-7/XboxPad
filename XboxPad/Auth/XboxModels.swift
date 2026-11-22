@@ -461,10 +461,115 @@ enum NintendoButtonLayoutMode: String, CaseIterable, Identifiable, Codable, Hash
     }
 }
 
+enum CrosshairStyle: String, CaseIterable, Identifiable, Codable, Hashable {
+    case dot = "dot"
+    case plus = "plus"
+    case dotPlus = "dotPlus"
+    case circleDot = "circleDot"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .dot: return "极简红/绿点"
+        case .plus: return "经典十字准星"
+        case .dotPlus: return "中心点 + 十字（FPS 推荐）"
+        case .circleDot: return "瞄准圈 + 中心点"
+        }
+    }
+}
+
+enum ControlProfilePreset: String, CaseIterable, Identifiable, Codable, Hashable {
+    case standard = "standard"
+    case fps = "fps"
+    case racing = "racing"
+    case souls = "souls"
+    case custom = "custom"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .standard: return "标准均衡"
+        case .fps: return "FPS 竞技"
+        case .racing: return "赛车竞速"
+        case .souls: return "动作 / 魂类"
+        case .custom: return "自定义"
+        }
+    }
+}
+
+enum PaddleAction: String, CaseIterable, Identifiable, Codable, Hashable {
+    case none = "none"
+    case a = "a"
+    case b = "b"
+    case x = "x"
+    case y = "y"
+    case lb = "lb"
+    case rb = "rb"
+    case l3 = "l3"
+    case r3 = "r3"
+    case view = "view"
+    case menu = "menu"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .none: return "未映射"
+        case .a: return "A 键"
+        case .b: return "B 键"
+        case .x: return "X 键"
+        case .y: return "Y 键"
+        case .lb: return "LB 左肩键"
+        case .rb: return "RB 右肩键"
+        case .l3: return "L3 左摇杆按下"
+        case .r3: return "R3 右摇杆按下"
+        case .view: return "View 视图键"
+        case .menu: return "Menu 菜单键"
+        }
+    }
+}
+
+struct GamepadButtonMap: Codable, Equatable, Sendable {
+    var swapTriggersAndBumpers: Bool = false
+    var swapSticks: Bool = false
+    var invertLeftY: Bool = false
+    var invertRightY: Bool = false
+    var paddle1: PaddleAction = .a
+    var paddle2: PaddleAction = .b
+    var paddle3: PaddleAction = .x
+    var paddle4: PaddleAction = .y
+}
+
+struct KeyboardBindingMap: Codable, Equatable, Sendable {
+    var aKey: String = "Space"
+    var bKey: String = "C"
+    var xKey: String = "R"
+    var yKey: String = "E"
+    var lbKey: String = "Q"
+    var rbKey: String = "G"
+    var l3Key: String = "LShift"
+    var r3Key: String = "V"
+    var viewKey: String = "Tab"
+    var menuKey: String = "Esc"
+    var nexusKey: String = "F12"
+
+    static let keyChoices: [String] = [
+        "Space", "Enter", "Tab", "Esc", "LShift", "LCtrl", "LAlt", "Backspace",
+        "Q", "E", "R", "T", "F", "G", "Z", "X", "C", "V", "B", "1", "2", "3", "4", "F12",
+    ]
+}
+
 struct AppSettings: Codable, Equatable {
     var resolution: StreamResolution = .p1080HQ
+    var customMaxBitrateMbps: Int = 0 // 0 = 自动 (最高 40Mbps), 4..60 = 用户自定义上限 (Mbps)
     var latencyProfile: LatencyProfile = .low
     var aspectMode: VideoAspectMode = .fit
+    var videoZoomScale: Double = 1.0 // 1.00 .. 1.35 带鱼屏/4:3 黄金比例微缩放
+    var crosshairEnabled: Bool = false
+    var crosshairStyle: CrosshairStyle = .dotPlus
+    var instantReplayEnabled: Bool = true
     var sharpeningLevel: VideoSharpeningLevel = .light
     var hdrToneMode: VideoHDRToneMode = .off
     var debandingEnabled: Bool = true
@@ -495,6 +600,13 @@ struct AppSettings: Codable, Equatable {
     var keyboardMouseMode: KeyboardMouseMode = .gamepadEmulation
     var mouseSensitivity: Double = 1.0
     var virtualGamepadOpacity: Double = 0.58
+    var virtualGamepadScale: Double = 1.0
+    var virtualGamepadFloatingStick: Bool = false
+    var virtualGamepadHapticTap: Bool = true
+    var virtualGamepadOffsets: [String: [Double]] = [:]
+    var controlProfile: ControlProfilePreset = .standard
+    var gamepadButtonMap: GamepadButtonMap = GamepadButtonMap()
+    var keyboardBindingMap: KeyboardBindingMap = KeyboardBindingMap()
     var nintendoButtonLayout: NintendoButtonLayoutMode = .auto
     var micEchoCancellation: Bool = true
     var shadowLift: Double = 0.0
@@ -517,13 +629,16 @@ struct AppSettings: Codable, Equatable {
     private static let storageKey = "xboxpad.settings.v1"
 
     enum CodingKeys: String, CodingKey {
-        case resolution, latencyProfile, aspectMode, sharpeningLevel, hdrToneMode
+        case resolution, customMaxBitrateMbps, latencyProfile, aspectMode, videoZoomScale
+        case crosshairEnabled, crosshairStyle, instantReplayEnabled, sharpeningLevel, hdrToneMode
         case debandingEnabled, metalFXUpscaling, thermalProtectionEnabled, externalDisplayFullscreen
         case framePacingMode, frameInterpolation120Hz, stereoAudio, networkMode
         case autoReconnect, preferredLanguage, forceRegionIP, selectedHomeRegion, selectedCloudRegion
         case rumbleEnabled, handleRumbleStrength, triggerRumbleStrength, fallbackTriggerToHandles
         case stickDeadzone, leftStickDeadzone, rightStickDeadzone, stickResponseCurve, triggerDeadzone
-        case gyroAimMode, gyroSensitivity, gyroInvertY, keyboardMouseMode, mouseSensitivity, virtualGamepadOpacity
+        case gyroAimMode, gyroSensitivity, gyroInvertY, keyboardMouseMode, mouseSensitivity
+        case virtualGamepadOpacity, virtualGamepadScale, virtualGamepadFloatingStick, virtualGamepadHapticTap, virtualGamepadOffsets
+        case controlProfile, gamepadButtonMap, keyboardBindingMap
         case nintendoButtonLayout, micEchoCancellation, shadowLift, videoBrightness, videoContrast, videoSaturation
         case macLock16x9Window, favoriteCloudTitleIds, recentCloudTitleIds
         case menuComboEnabled, mapShareToNexus, showPerformanceHUD, showVirtualControlsWhenNoGamepad
@@ -535,8 +650,13 @@ struct AppSettings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         resolution = try c.decodeIfPresent(StreamResolution.self, forKey: .resolution) ?? .p1080HQ
+        customMaxBitrateMbps = try c.decodeIfPresent(Int.self, forKey: .customMaxBitrateMbps) ?? 0
         latencyProfile = try c.decodeIfPresent(LatencyProfile.self, forKey: .latencyProfile) ?? .low
         aspectMode = try c.decodeIfPresent(VideoAspectMode.self, forKey: .aspectMode) ?? .fit
+        videoZoomScale = try c.decodeIfPresent(Double.self, forKey: .videoZoomScale) ?? 1.0
+        crosshairEnabled = try c.decodeIfPresent(Bool.self, forKey: .crosshairEnabled) ?? false
+        crosshairStyle = try c.decodeIfPresent(CrosshairStyle.self, forKey: .crosshairStyle) ?? .dotPlus
+        instantReplayEnabled = try c.decodeIfPresent(Bool.self, forKey: .instantReplayEnabled) ?? true
         sharpeningLevel = try c.decodeIfPresent(VideoSharpeningLevel.self, forKey: .sharpeningLevel) ?? .light
         hdrToneMode = try c.decodeIfPresent(VideoHDRToneMode.self, forKey: .hdrToneMode) ?? .off
         debandingEnabled = try c.decodeIfPresent(Bool.self, forKey: .debandingEnabled) ?? true
@@ -568,6 +688,13 @@ struct AppSettings: Codable, Equatable {
         keyboardMouseMode = try c.decodeIfPresent(KeyboardMouseMode.self, forKey: .keyboardMouseMode) ?? .gamepadEmulation
         mouseSensitivity = try c.decodeIfPresent(Double.self, forKey: .mouseSensitivity) ?? 1.0
         virtualGamepadOpacity = try c.decodeIfPresent(Double.self, forKey: .virtualGamepadOpacity) ?? 0.58
+        virtualGamepadScale = try c.decodeIfPresent(Double.self, forKey: .virtualGamepadScale) ?? 1.0
+        virtualGamepadFloatingStick = try c.decodeIfPresent(Bool.self, forKey: .virtualGamepadFloatingStick) ?? false
+        virtualGamepadHapticTap = try c.decodeIfPresent(Bool.self, forKey: .virtualGamepadHapticTap) ?? true
+        virtualGamepadOffsets = try c.decodeIfPresent([String: [Double]].self, forKey: .virtualGamepadOffsets) ?? [:]
+        controlProfile = try c.decodeIfPresent(ControlProfilePreset.self, forKey: .controlProfile) ?? .standard
+        gamepadButtonMap = try c.decodeIfPresent(GamepadButtonMap.self, forKey: .gamepadButtonMap) ?? GamepadButtonMap()
+        keyboardBindingMap = try c.decodeIfPresent(KeyboardBindingMap.self, forKey: .keyboardBindingMap) ?? KeyboardBindingMap()
         nintendoButtonLayout = try c.decodeIfPresent(NintendoButtonLayoutMode.self, forKey: .nintendoButtonLayout) ?? .auto
         micEchoCancellation = try c.decodeIfPresent(Bool.self, forKey: .micEchoCancellation) ?? true
         shadowLift = try c.decodeIfPresent(Double.self, forKey: .shadowLift) ?? 0.0

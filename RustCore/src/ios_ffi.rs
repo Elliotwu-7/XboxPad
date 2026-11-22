@@ -29,6 +29,7 @@ pub struct XboxPadConfig {
     pub network_mode: u8,
     pub max_video_delay_ms: u32,
     pub force_region_ip: *const c_char,
+    pub max_video_bitrate_kbps: u32,
 }
 
 #[repr(C)]
@@ -92,6 +93,7 @@ impl From<XboxPadInputFrame> for InputFrame {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct XboxPadRumble {
+    pub gamepad_index: u8,
     pub start_delay_ms: u16,
     pub duration_ms: u16,
     pub delay_ms: u16,
@@ -105,6 +107,7 @@ pub struct XboxPadRumble {
 impl From<RumbleData> for XboxPadRumble {
     fn from(r: RumbleData) -> Self {
         Self {
+            gamepad_index: r.gamepad_index,
             start_delay_ms: r.start_delay_ms,
             duration_ms: r.duration_ms,
             delay_ms: r.delay_ms,
@@ -496,6 +499,7 @@ fn build_session_config(
         coop: raw.coop,
         network_mode: raw.network_mode,
         max_video_delay_ms,
+        max_video_bitrate_kbps: raw.max_video_bitrate_kbps,
         force_region_ip,
         extra_ice_servers,
         video_sink: Some(sink.clone()),

@@ -11,8 +11,8 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     ENABLE_BITCODE: NO
-    MARKETING_VERSION: "1.0.39"
-    CURRENT_PROJECT_VERSION: "40"
+    MARKETING_VERSION: "1.0.40"
+    CURRENT_PROJECT_VERSION: "41"
 
 targets:
   XboxPad:
@@ -38,6 +38,7 @@ targets:
     dependencies:
       - framework: Frameworks/XboxPadNano.xcframework
         embed: false
+      - sdk: AppIntents.framework
       - sdk: AVFoundation.framework
       - sdk: AVKit.framework
       - sdk: AudioToolbox.framework
@@ -54,6 +55,7 @@ targets:
       - sdk: QuartzCore.framework
       - sdk: SafariServices.framework
       - sdk: Security.framework
+      - sdk: UserNotifications.framework
       - sdk: VideoToolbox.framework
 
   XboxPad-macOS:
@@ -82,6 +84,7 @@ targets:
     dependencies:
       - framework: Frameworks/XboxPadNano.xcframework
         embed: false
+      - sdk: AppIntents.framework
       - sdk: AppKit.framework
       - sdk: AVFoundation.framework
       - sdk: AVKit.framework
@@ -97,6 +100,7 @@ targets:
       - sdk: Network.framework
       - sdk: QuartzCore.framework
       - sdk: Security.framework
+      - sdk: UserNotifications.framework
       - sdk: VideoToolbox.framework
 
 schemes:

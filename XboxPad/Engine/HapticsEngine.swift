@@ -60,11 +60,17 @@ final class HapticsEngine: @unchecked Sendable {
     private var channels: [GCHapticsLocality: ChannelState] = [:]
     private var supportedLocalities: Set<GCHapticsLocality> = []
     private var pendingSequenceWorkItem: DispatchWorkItem?
+    private var auxSlotEngines: [Int: HapticsEngine] = [:]
+    private let isChildSlotEngine: Bool
 
     var settings = AppSettings()
 
     private(set) var supportsHandleRumble: Bool = false
     private(set) var supportsTriggerRumble: Bool = false
+
+    init(isChildSlotEngine: Bool = false) {
+        self.isChildSlotEngine = isChildSlotEngine
+    }
 
     func bind(controller: GCController?) {
         queue.async { [weak self] in
@@ -72,10 +78,36 @@ final class HapticsEngine: @unchecked Sendable {
         }
     }
 
+    /// Bind up to 4 simultaneous hardware controllers (P1..P4) for independent local co-op rumble routing.
+    func bindControllers(_ controllers: [GCController], primarySlot: Int = 0) {
+        let p1 = controllers.first
+        bind(controller: p1)
+        guard !isChildSlotEngine else { return }
+        queue.async { [weak self] in
+            guard let self else { return }
+            for slot in 1..<4 {
+                if slot < controllers.count {
+                    let sub = self.auxSlotEngines[slot] ?? {
+                        let created = HapticsEngine(isChildSlotEngine: true)
+                        created.updateSettings(self.settings)
+                        self.auxSlotEngines[slot] = created
+                        return created
+                    }()
+                    sub.bind(controller: controllers[slot])
+                } else if let existing = self.auxSlotEngines.removeValue(forKey: slot) {
+                    existing.bind(controller: nil)
+                }
+            }
+        }
+    }
+
     /// Re-verify CoreHaptics engines after AVAudioSession activation/interruption.
     func prepareForStream() {
         queue.async { [weak self] in
             guard let self else { return }
+            for sub in self.auxSlotEngines.values {
+                sub.prepareForStream()
+            }
             if self.channels.isEmpty, let controller = self.boundController {
                 self.bindLocked(controller: controller)
                 return
@@ -93,16 +125,24 @@ final class HapticsEngine: @unchecked Sendable {
 
     func updateSettings(_ newSettings: AppSettings) {
         queue.async { [weak self] in
-            self?.settings = newSettings
+            guard let self else { return }
+            self.settings = newSettings
+            for sub in self.auxSlotEngines.values {
+                sub.updateSettings(newSettings)
+            }
             if !newSettings.rumbleEnabled {
-                self?.silenceAllLocked(stopPlayers: true)
+                self.silenceAllLocked(stopPlayers: true)
             }
         }
     }
 
     func stopAll() {
         queue.async { [weak self] in
-            self?.silenceAllLocked(stopPlayers: true)
+            guard let self else { return }
+            for sub in self.auxSlotEngines.values {
+                sub.stopAll()
+            }
+            self.silenceAllLocked(stopPlayers: true)
         }
     }
 
@@ -114,16 +154,21 @@ final class HapticsEngine: @unchecked Sendable {
         }
     }
 
-    /// Manual motor test for the Settings screen so user can verify each motor directly.
-    func testMotor(_ channel: MotorChannel) {
+    /// Manual motor test for the Settings screen so user can verify each motor on the selected player slot.
+    func testMotor(_ channel: MotorChannel, slotIndex: Int = 0) {
         queue.async { [weak self] in
             guard let self else { return }
+            if slotIndex > 0, let sub = self.auxSlotEngines[slotIndex] {
+                sub.testMotor(channel, slotIndex: 0)
+                return
+            }
             self.driveChannel(locality: channel.locality, intensity: 0.85, durationSec: 0.35)
         }
     }
 
-    /// Apply a full 4-motor Xbox rumble command coming from Rust nano-rs.
+    /// Apply a full 4-motor Xbox rumble command routed independently to player slot 0..3 (P1..P4).
     func applyRumble(
+        gamepadIndex: UInt8 = 0,
         startDelayMs: UInt16,
         durationMs: UInt16,
         delayMs: UInt16,
@@ -133,8 +178,23 @@ final class HapticsEngine: @unchecked Sendable {
         leftTrigger: Float,
         rightTrigger: Float
     ) {
+        let slot = Int(gamepadIndex)
         queue.async { [weak self] in
             guard let self else { return }
+            if slot > 0, !self.isChildSlotEngine, let sub = self.auxSlotEngines[slot] {
+                sub.applyRumble(
+                    gamepadIndex: 0,
+                    startDelayMs: startDelayMs,
+                    durationMs: durationMs,
+                    delayMs: delayMs,
+                    repeatCount: repeatCount,
+                    strongMagnitude: strongMagnitude,
+                    weakMagnitude: weakMagnitude,
+                    leftTrigger: leftTrigger,
+                    rightTrigger: rightTrigger
+                )
+                return
+            }
             self.pendingSequenceWorkItem?.cancel()
             self.pendingSequenceWorkItem = nil
 

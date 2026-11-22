@@ -76,6 +76,7 @@ final class H264StreamRenderer: @unchecked Sendable {
     private var brightnessLocked: Float = 0.0
     private var contrastLocked: Float = 1.0
     private var saturationLocked: Float = 1.0
+    private var zoomScaleLocked: Float = 1.0
     private var thermalEDRMultiplierLocked: Float = 1.0
     private var isMetalFXActiveLocked: Bool = false
     private var currentEDRHeadroomLocked: Float = 1.0
@@ -319,6 +320,19 @@ final class H264StreamRenderer: @unchecked Sendable {
         brightnessLocked = br
         contrastLocked = ct
         saturationLocked = st
+        let hasFrame = latestPixelBuffer != nil
+        os_unfair_lock_unlock(&frameLock)
+
+        if changed && hasFrame {
+            triggerRender(forceRedraw: true)
+        }
+    }
+
+    func updateZoomScale(_ scale: Double) {
+        let clamped = Float(max(min(scale, 1.35), 1.0))
+        os_unfair_lock_lock(&frameLock)
+        let changed = abs(zoomScaleLocked - clamped) > 0.001
+        zoomScaleLocked = clamped
         let hasFrame = latestPixelBuffer != nil
         os_unfair_lock_unlock(&frameLock)
 
@@ -1059,6 +1073,7 @@ final class H264StreamRenderer: @unchecked Sendable {
             let brightness = brightnessLocked
             let contrast = contrastLocked
             let saturation = saturationLocked
+            let zoomScale = zoomScaleLocked
             let thermalMult = thermalEDRMultiplierLocked
             let edrHeadroom = currentEDRHeadroomLocked
             let interpPhase = latestInterpPhaseLocked
@@ -1078,6 +1093,7 @@ final class H264StreamRenderer: @unchecked Sendable {
                 brightness: brightness,
                 contrast: contrast,
                 saturation: saturation,
+                zoomScale: zoomScale,
                 thermalEDRMultiplier: thermalMult,
                 edrHeadroom: edrHeadroom,
                 interpPhase: interpPhase,
@@ -1487,6 +1503,7 @@ final class H264StreamRenderer: @unchecked Sendable {
         brightness: Float,
         contrast: Float,
         saturation: Float,
+        zoomScale: Float,
         thermalEDRMultiplier: Float,
         edrHeadroom: Float,
         interpPhase: Float,
@@ -1597,6 +1614,10 @@ final class H264StreamRenderer: @unchecked Sendable {
                 } else {
                     scaleY = viewAspect / videoAspect
                 }
+            }
+            if zoomScale > 1.001 {
+                scaleX *= zoomScale
+                scaleY *= zoomScale
             }
 
             let isFullRange: Float = (pixelFmt == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) ? 1.0 : 0.0

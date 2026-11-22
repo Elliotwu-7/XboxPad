@@ -2,6 +2,7 @@ import Foundation
 import Network
 import os
 import QuartzCore
+import UserNotifications
 #if os(iOS)
 import UIKit
 #elseif os(macOS)
@@ -51,6 +52,7 @@ final class NanoStreamSession: ObservableObject {
     @Published private(set) var micLevel: Float = 0
     @Published private(set) var isRecording = false
     @Published private(set) var recordingElapsedSec: Int = 0
+    @Published private(set) var isSavingReplay = false
     @Published private(set) var latencyHistory: [LatencySample] = []
     @Published private(set) var thermalState: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState
     @Published var toastMessage: String?
@@ -59,6 +61,7 @@ final class NanoStreamSession: ObservableObject {
     let audioEngine = OpusAudioEngine()
     let micEngine = MicrophoneEngine()
     let recorder = StreamRecorder()
+    let replayBuffer = InstantReplayBuffer()
 
     private let authService: XboxAuthService
     private let gamepadManager: GamepadManager
@@ -189,6 +192,9 @@ final class NanoStreamSession: ObservableObject {
                 self.disconnectWatchdogTask?.cancel()
                 self.connectionState = .streaming
                 self.startStallWatchdog()
+                if self.isAppInBackground {
+                    self.notifyStreamReadyInBackground()
+                }
             }
         }
         videoRenderer.onDecodeTiming = { [weak self] ms in
@@ -263,7 +269,13 @@ final class NanoStreamSession: ObservableObject {
             contrast: settings.videoContrast,
             saturation: settings.videoSaturation
         )
+        videoRenderer.updateZoomScale(settings.videoZoomScale)
+        replayBuffer.reset()
+        replayBuffer.setEnabled(settings.instantReplayEnabled)
         micEngine.echoCancellationEnabled = settings.micEchoCancellation
+        if !target.isHome {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        }
         syncThermalProtection()
         audioEngine.setPacingMode(settings.framePacingMode)
         audioEngine.start(sampleRate: 48_000, channels: settings.stereoAudio ? 2 : 1)
@@ -303,6 +315,7 @@ final class NanoStreamSession: ObservableObject {
         if isRecording {
             stopRecordingSilently()
         }
+        replayBuffer.reset()
         audioEngine.stop()
 
         let handleToStop = handleBox.take()
@@ -424,6 +437,31 @@ final class NanoStreamSession: ObservableObject {
         recorder.stop { _, _ in }
     }
 
+    func saveInstantReplay() {
+        guard !isSavingReplay else { return }
+        isSavingReplay = true
+        showToast("正在导出过去 30 秒原画精彩回放...")
+        replayBuffer.exportLast30Seconds { [weak self] _, message in
+            Task { @MainActor [weak self] in
+                self?.isSavingReplay = false
+                self?.showToast(message)
+            }
+        }
+    }
+
+    private func notifyStreamReadyInBackground() {
+        let content = UNMutableNotificationContent()
+        content.title = "XboxPad 串流已就绪"
+        content.body = "「\(target.displayTitle)」已完成排队并进入游戏画面，点击立即开玩！"
+        content.sound = .default
+        let req = UNNotificationRequest(
+            identifier: "xboxpad.stream.ready.\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(req)
+    }
+
     func captureScreenshotToPhotos(onCaptured: @escaping @MainActor (Bool) -> Void) {
         videoRenderer.captureCurrentFrameImage { [weak self] cgImage in
             guard let cgImage else {
@@ -467,6 +505,8 @@ final class NanoStreamSession: ObservableObject {
             contrast: newSettings.videoContrast,
             saturation: newSettings.videoSaturation
         )
+        videoRenderer.updateZoomScale(newSettings.videoZoomScale)
+        replayBuffer.setEnabled(newSettings.instantReplayEnabled)
         micEngine.echoCancellationEnabled = newSettings.micEchoCancellation
         syncThermalProtection()
         audioEngine.setPacingMode(newSettings.framePacingMode)
@@ -568,12 +608,14 @@ final class NanoStreamSession: ObservableObject {
                 guard let userData, let ptr, len > 0 else { return }
                 let session = Unmanaged<NanoStreamSession>.fromOpaque(userData).takeUnretainedValue()
                 let data = Data(bytes: ptr, count: len)
+                session.replayBuffer.appendVideo(data: data, ptsUs: ptsUs, keyframe: keyframe)
                 session.videoRenderer.enqueueAccessUnit(data: data, ptsUs: ptsUs, keyframe: keyframe)
             },
             on_audio_frame: { userData, ptr, len, _, sampleRate, channels in
                 guard let userData, let ptr, len > 0 else { return }
                 let session = Unmanaged<NanoStreamSession>.fromOpaque(userData).takeUnretainedValue()
                 let data = Data(bytes: ptr, count: len)
+                session.replayBuffer.appendAudio(data: data, sampleRate: sampleRate, channels: channels)
                 session.audioEngine.enqueueOpusFrame(data: data, sampleRate: sampleRate, channels: channels)
             },
             on_status: { userData, stagePtr, msgPtr, terminal in
@@ -638,6 +680,7 @@ final class NanoStreamSession: ObservableObject {
                 let session = Unmanaged<NanoStreamSession>.fromOpaque(userData).takeUnretainedValue()
                 let r = rumblePtr.pointee
                 session.gamepadManager.haptics.applyRumble(
+                    gamepadIndex: r.gamepad_index,
                     startDelayMs: r.start_delay_ms,
                     durationMs: r.duration_ms,
                     delayMs: r.delay_ms,
@@ -683,6 +726,7 @@ final class NanoStreamSession: ObservableObject {
         let coopEnabled = gamepadManager.connectedControllers.count > 1
         let networkMode = UInt8(settings.networkMode.rawValue)
         let maxDelay = UInt32(settings.latencyProfile.rawValue)
+        let maxBitrateKbps = UInt32(max(settings.customMaxBitrateMbps, 0) * 1000)
 
         let rc: Int32 = sessionId.withCString { cSessionId in
             streamType.withCString { cStreamType in
@@ -709,7 +753,8 @@ final class NanoStreamSession: ObservableObject {
                                                     coop: coopEnabled,
                                                     network_mode: networkMode,
                                                     max_video_delay_ms: maxDelay,
-                                                    force_region_ip: cRegionIP
+                                                    force_region_ip: cRegionIP,
+                                                    max_video_bitrate_kbps: maxBitrateKbps
                                                 )
                                                 return xboxpad_start(handle, &cfg)
                                             }

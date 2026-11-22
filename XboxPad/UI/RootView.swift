@@ -151,6 +151,9 @@ struct RootView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadQuickLaunchConsole)) { _ in
+            appState.quickLaunchFirstConsole()
+        }
     }
 
     private var splashView: some View {

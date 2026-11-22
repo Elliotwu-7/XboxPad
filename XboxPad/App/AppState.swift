@@ -8,6 +8,7 @@ final class AppState: ObservableObject {
     let gamepadManager = GamepadManager()
     let authSyncService = AuthSyncService()
     let updateChecker = AppUpdateChecker()
+    let networkDiagnostics = NetworkDiagnosticsService()
 
     @Published var settings: AppSettings {
         didSet {
@@ -54,6 +55,11 @@ final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
         self.updateChecker.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+        self.networkDiagnostics.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
@@ -345,6 +351,65 @@ final class AppState: ObservableObject {
         }
         settings.recentCloudTitleIds = recents
         activeStreamTarget = .cloud(game)
+    }
+
+    func applyControlProfile(_ preset: ControlProfilePreset) {
+        settings.controlProfile = preset
+        switch preset {
+        case .standard:
+            settings.leftStickDeadzone = 0.05
+            settings.rightStickDeadzone = 0.05
+            settings.stickResponseCurve = .linear
+            settings.triggerDeadzone = 0.02
+            settings.gamepadButtonMap.swapTriggersAndBumpers = false
+            settings.crosshairEnabled = false
+        case .fps:
+            settings.leftStickDeadzone = 0.04
+            settings.rightStickDeadzone = 0.03
+            settings.stickResponseCurve = .precision
+            settings.triggerDeadzone = 0.01
+            settings.gamepadButtonMap.paddle1 = .a
+            settings.gamepadButtonMap.paddle2 = .b
+            settings.gamepadButtonMap.paddle3 = .x
+            settings.gamepadButtonMap.paddle4 = .y
+            settings.shadowLift = max(settings.shadowLift, 0.14)
+            settings.crosshairEnabled = true
+        case .racing:
+            settings.leftStickDeadzone = 0.03
+            settings.rightStickDeadzone = 0.06
+            settings.stickResponseCurve = .linear
+            settings.triggerDeadzone = 0.01
+            settings.triggerRumbleStrength = 1.25
+            settings.crosshairEnabled = false
+        case .souls:
+            settings.leftStickDeadzone = 0.05
+            settings.rightStickDeadzone = 0.05
+            settings.stickResponseCurve = .snappy
+            settings.gamepadButtonMap.paddle1 = .b
+            settings.gamepadButtonMap.paddle2 = .a
+            settings.crosshairEnabled = false
+        case .custom:
+            break
+        }
+        showToast("已切换操控预设：\(preset.label)")
+    }
+
+    func quickLaunchFirstConsole() {
+        guard isAuthenticated, activeStreamTarget == nil else { return }
+        Task {
+            if consoles.isEmpty {
+                await refreshConsoles()
+            }
+            guard let target = consoles.first(where: \.isOnline) ?? consoles.first else {
+                showToast("未找到可用 Xbox 主机")
+                return
+            }
+            if target.isStandby {
+                await wakeConsole(target, thenStream: true)
+            } else {
+                activeStreamTarget = .home(target)
+            }
+        }
     }
 
     private func applyAuthSnapshot(_ snapshot: AuthSessionSnapshot) {

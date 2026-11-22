@@ -49,6 +49,11 @@ struct XboxPadApp: App {
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
 
+                Button("保存精彩回放 (过去 30 秒)") {
+                    NotificationCenter.default.post(name: .xboxpadSaveReplay, object: nil)
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+
                 Button("开启 / 关闭麦克风") {
                     NotificationCenter.default.post(name: .xboxpadToggleMic, object: nil)
                 }

@@ -58,6 +58,7 @@ struct SettingsView: View {
                                 gamepadDiagnosticsCard
                             }
                             hapticsCard
+                            controlRemappingCard
                             controllerTuningCard
                         case .video:
                             videoCoreCard
@@ -65,6 +66,7 @@ struct SettingsView: View {
                             videoColorGradingCard
                             audioAndSystemCard
                         case .network:
+                            networkDoctorCard
                             regionCard
                             networkRelayCard
                         case .account:
@@ -361,7 +363,7 @@ struct SettingsView: View {
                 ) {
                     ForEach(HapticsEngine.MotorChannel.allCases) { motor in
                         Button {
-                            gamepadManager.haptics.testMotor(motor)
+                            gamepadManager.haptics.testMotor(motor, slotIndex: gamepadManager.selectedSlotIndex)
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "waveform.path")
@@ -426,6 +428,165 @@ struct SettingsView: View {
                 )
             }
         }
+    }
+
+    private var controlRemappingCard: some View {
+        settingsCard(
+            title: "操控预设、Elite 背键与键鼠改键",
+            icon: "keyboard.badge.ellipsis",
+            tint: XboxTheme.emeraldBright,
+            footer: "一键切换 FPS / 赛车 / 动作预设；支持 Xbox Elite 2 四个背键与键鼠模拟按键完全自定义。"
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("快速游戏预设档案")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach([ControlProfilePreset.standard, .fps, .racing, .souls]) { preset in
+                            let active = appState.settings.controlProfile == preset
+                            Button {
+                                appState.applyControlProfile(preset)
+                            } label: {
+                                Text(preset.label)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(active ? .black : .white.opacity(0.88))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        active ? AnyShapeStyle(XboxTheme.emeraldBright) : AnyShapeStyle(Color.white.opacity(0.08)),
+                                        in: Capsule()
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            cardDivider
+            toggleRow(
+                title: "扳机 (LT/RT) 与肩键 (LB/RB) 互换",
+                icon: "arrow.up.arrow.down.circle",
+                color: .orange,
+                isOn: $appState.settings.gamepadButtonMap.swapTriggersAndBumpers
+            )
+
+            cardDivider
+            toggleRow(
+                title: "交换左右摇杆 (左撇子布局)",
+                icon: "arrow.left.arrow.right",
+                color: XboxTheme.info,
+                isOn: $appState.settings.gamepadButtonMap.swapSticks
+            )
+
+            cardDivider
+            HStack(spacing: 12) {
+                Toggle("反转左摇杆 Y", isOn: $appState.settings.gamepadButtonMap.invertLeftY)
+                    .font(.caption.weight(.medium))
+                    .tint(XboxTheme.emerald)
+                Toggle("反转右摇杆 Y", isOn: $appState.settings.gamepadButtonMap.invertRightY)
+                    .font(.caption.weight(.medium))
+                    .tint(XboxTheme.emerald)
+            }
+
+            cardDivider
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Xbox Elite 背键映射 (P1 – P4)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 8) {
+                    paddlePickerChip("P1 背键", selection: $appState.settings.gamepadButtonMap.paddle1)
+                    paddlePickerChip("P2 背键", selection: $appState.settings.gamepadButtonMap.paddle2)
+                    paddlePickerChip("P3 背键", selection: $appState.settings.gamepadButtonMap.paddle3)
+                    paddlePickerChip("P4 背键", selection: $appState.settings.gamepadButtonMap.paddle4)
+                }
+            }
+
+            if appState.settings.keyboardMouseMode == .gamepadEmulation {
+                cardDivider
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("键鼠模拟自定义键位（WASD 固定移动）")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("重置键位") {
+                            appState.settings.keyboardBindingMap = KeyboardBindingMap()
+                        }
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(XboxTheme.emeraldBright)
+                        .buttonStyle(.plain)
+                    }
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                        keyBindChip("A 键", keyName: $appState.settings.keyboardBindingMap.aKey)
+                        keyBindChip("B 键", keyName: $appState.settings.keyboardBindingMap.bKey)
+                        keyBindChip("X 键", keyName: $appState.settings.keyboardBindingMap.xKey)
+                        keyBindChip("Y 键", keyName: $appState.settings.keyboardBindingMap.yKey)
+                        keyBindChip("LB 肩键", keyName: $appState.settings.keyboardBindingMap.lbKey)
+                        keyBindChip("RB 肩键", keyName: $appState.settings.keyboardBindingMap.rbKey)
+                        keyBindChip("L3 冲刺", keyName: $appState.settings.keyboardBindingMap.l3Key)
+                        keyBindChip("R3 近战", keyName: $appState.settings.keyboardBindingMap.r3Key)
+                        keyBindChip("View 键", keyName: $appState.settings.keyboardBindingMap.viewKey)
+                        keyBindChip("Menu 键", keyName: $appState.settings.keyboardBindingMap.menuKey)
+                    }
+                }
+            }
+        }
+    }
+
+    private func paddlePickerChip(_ title: String, selection: Binding<PaddleAction>) -> some View {
+        HStack {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white.opacity(0.85))
+            Spacer()
+            Menu {
+                ForEach(PaddleAction.allCases) { act in
+                    Button(act.label) { selection.wrappedValue = act }
+                }
+            } label: {
+                Text(selection.wrappedValue.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(XboxTheme.emeraldBright)
+                    .lineLimit(1)
+            }
+            #if os(macOS)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            #endif
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func keyBindChip(_ title: String, keyName: Binding<String>) -> some View {
+        HStack {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white.opacity(0.82))
+            Spacer()
+            Menu {
+                ForEach(KeyboardBindingMap.keyChoices, id: \.self) { key in
+                    Button(key) { keyName.wrappedValue = key }
+                }
+            } label: {
+                Text(keyName.wrappedValue)
+                    .font(.caption.monospaced().bold())
+                    .foregroundStyle(XboxTheme.info)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(XboxTheme.info.opacity(0.14), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            #if os(macOS)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            #endif
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var controllerTuningCard: some View {
@@ -591,6 +752,22 @@ struct SettingsView: View {
             )
 
             cardDivider
+            toggleRow(
+                title: "虚拟摇杆随按随出（浮动摇杆）",
+                icon: "circle.dashed.inset.filled",
+                color: .teal,
+                isOn: $appState.settings.virtualGamepadFloatingStick
+            )
+
+            cardDivider
+            toggleRow(
+                title: "虚拟按键 Taptic 轻触反馈",
+                icon: "iphone.radiowaves.left.and.right",
+                color: .teal,
+                isOn: $appState.settings.virtualGamepadHapticTap
+            )
+
+            cardDivider
             sliderRow(
                 title: "虚拟触控手柄透明度",
                 valueText: "\(Int(appState.settings.virtualGamepadOpacity * 100))%",
@@ -599,6 +776,32 @@ struct SettingsView: View {
                 range: 0.25...0.95,
                 step: 0.05
             )
+
+            cardDivider
+            sliderRow(
+                title: "虚拟按键尺寸缩放",
+                valueText: "\(Int((appState.settings.virtualGamepadScale * 100).rounded()))%",
+                tint: .teal,
+                value: $appState.settings.virtualGamepadScale,
+                range: 0.70...1.25,
+                step: 0.05
+            )
+
+            if !appState.settings.virtualGamepadOffsets.isEmpty {
+                cardDivider
+                Button {
+                    appState.settings.virtualGamepadOffsets = [:]
+                    appState.showToast("已恢复默认虚拟手柄按键排版")
+                } label: {
+                    Text("重置自定义虚拟按键排版")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
             #endif
 
             cardDivider
@@ -643,6 +846,69 @@ struct SettingsView: View {
             }
 
             cardDivider
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 11) {
+                    XboxIconBadge(systemName: "speedometer", color: .cyan, size: 30)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("视频码率上限（支持自定义）")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.white)
+                        Text(
+                            appState.settings.customMaxBitrateMbps == 0
+                                ? "自动模式（最高 40 Mbps · 内网自动拉满，弱网自适应）"
+                                : "自定义上限 \(appState.settings.customMaxBitrateMbps) Mbps（起播约 \(max(2, appState.settings.customMaxBitrateMbps * 7 / 10))M · 下次重连生效）"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(appState.settings.customMaxBitrateMbps == 0 ? "自动" : "\(appState.settings.customMaxBitrateMbps)M")
+                        .font(.subheadline.monospacedDigit().bold())
+                        .foregroundStyle(.cyan)
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 7) {
+                        ForEach([0, 8, 12, 18, 25, 40, 55], id: \.self) { mbps in
+                            let selected = appState.settings.customMaxBitrateMbps == mbps
+                            Button {
+                                appState.settings.customMaxBitrateMbps = mbps
+                            } label: {
+                                Text(mbps == 0 ? "自动" : "\(mbps)M")
+                                    .font(.caption.monospacedDigit().weight(.semibold))
+                                    .foregroundStyle(selected ? .black : .white.opacity(0.85))
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        selected ? AnyShapeStyle(Color.cyan) : AnyShapeStyle(Color.white.opacity(0.08)),
+                                        in: Capsule()
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Text("精细调节")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: Binding(
+                            get: { Double(appState.settings.customMaxBitrateMbps == 0 ? 40 : appState.settings.customMaxBitrateMbps) },
+                            set: { appState.settings.customMaxBitrateMbps = Int($0.rounded()) }
+                        ),
+                        in: 4...60,
+                        step: 1
+                    )
+                    .tint(.cyan)
+                    Text("4–60M")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            cardDivider
             menuPickerRow(
                 title: "低延迟抗抖动档位",
                 icon: "gauge.with.needle",
@@ -675,6 +941,39 @@ struct SettingsView: View {
             ) {
                 ForEach(VideoAspectMode.allCases) { mode in
                     Button(mode.label) { appState.settings.aspectMode = mode }
+                }
+            }
+
+            cardDivider
+            sliderRow(
+                title: "带鱼屏 / 4:3 黄金比例微缩放",
+                valueText: "\(Int((appState.settings.videoZoomScale * 100).rounded()))%",
+                tint: .indigo,
+                value: $appState.settings.videoZoomScale,
+                range: 1.0...1.35,
+                step: 0.01
+            )
+
+            cardDivider
+            toggleRow(
+                title: "FPS 中心辅助准星叠层",
+                subtitle: "在屏幕几何中心渲染轻量准星，支持 4 种样式",
+                icon: "scope",
+                color: XboxTheme.emeraldBright,
+                isOn: $appState.settings.crosshairEnabled
+            )
+
+            if appState.settings.crosshairEnabled {
+                cardDivider
+                menuPickerRow(
+                    title: "准星样式",
+                    icon: "plus.viewfinder",
+                    color: XboxTheme.emeraldBright,
+                    currentLabel: appState.settings.crosshairStyle.label
+                ) {
+                    ForEach(CrosshairStyle.allCases) { style in
+                        Button(style.label) { appState.settings.crosshairStyle = style }
+                    }
                 }
             }
         }
@@ -852,6 +1151,15 @@ struct SettingsView: View {
 
             cardDivider
             toggleRow(
+                title: "精彩瞬间 30 秒瞬时回放（零编码功耗）",
+                subtitle: "内存环形缓存最近 30 秒原始视频帧，随时一键或 ⇧⌘G 导出原画 MP4",
+                icon: "clock.arrow.circlepath",
+                color: .orange,
+                isOn: $appState.settings.instantReplayEnabled
+            )
+
+            cardDivider
+            toggleRow(
                 title: "温控自适应保护（防高热降频）",
                 icon: "thermometer.medium",
                 color: .orange,
@@ -869,6 +1177,114 @@ struct SettingsView: View {
     }
 
     // MARK: - 3. Region & Network Tab
+
+    private var networkDoctorCard: some View {
+        let diag = appState.networkDiagnostics
+        return settingsCard(
+            title: "一键网络体检（NAT / STUN / xCloud 测速）",
+            icon: "stethoscope",
+            tint: .cyan,
+            footer: "通过真实 UDP STUN 探测圆锥/对称 NAT 并测试各大洲 xCloud 网关延迟，给出最优码率与缓冲建议。"
+        ) {
+            HStack(spacing: 12) {
+                XboxIconBadge(systemName: "waveform.path.ecg.rectangle.fill", color: .cyan, size: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(diag.isRunning ? "正在进行 UDP STUN 与网关测速..." : "检测当前网络串流条件")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text(diag.report == nil ? "点击右侧按钮立即检测 NAT 类型与最优节点" : diag.report!.natTypeDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    Task { await diag.runDiagnostics() }
+                } label: {
+                    if diag.isRunning {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.black)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Color.cyan, in: Capsule())
+                    } else {
+                        Text(diag.report == nil ? "开始体检" : "重新检测")
+                            .font(.caption.bold())
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 7)
+                            .background(Color.cyan, in: Capsule())
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(diag.isRunning)
+            }
+
+            if let report = diag.report {
+                cardDivider
+                HStack(spacing: 10) {
+                    if let ms = report.xboxAuthRttMs {
+                        diagMetricPill(title: "Xbox 信令", value: "\(ms)ms", good: ms <= 150)
+                    }
+                    if let addr = report.publicMappedAddress {
+                        diagMetricPill(title: "公网映射", value: addr, good: !report.isSymmetricNAT)
+                    }
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(report.regionProbes) { p in
+                            let text = p.rttMs.map { "\($0)ms" } ?? "超时"
+                            let good = (p.rttMs ?? 999) <= 120
+                            diagMetricPill(title: p.name, value: text, good: good)
+                        }
+                    }
+                }
+
+                Text(report.recommendationSummary)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.88))
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                Button {
+                    appState.settings.resolution = report.recommendedResolution
+                    appState.settings.customMaxBitrateMbps = report.recommendedBitrateMbps
+                    appState.settings.latencyProfile = report.recommendedLatencyProfile
+                    appState.showToast("已应用网络体检推荐参数")
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "wand.and.stars")
+                        Text("一键应用推荐配置（\(report.recommendedBitrateMbps == 0 ? "自动40M" : "\(report.recommendedBitrateMbps)M") · \(report.recommendedLatencyProfile.rawValue)ms）")
+                            .font(.caption.bold())
+                    }
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(XboxTheme.emeraldBright, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func diagMetricPill(title: String, value: String, good: Bool) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(good ? XboxTheme.emeraldBright : XboxTheme.warning)
+                .frame(width: 6, height: 6)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption2.monospacedDigit().bold())
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(Color.white.opacity(0.06), in: Capsule())
+    }
 
     private var regionCard: some View {
         settingsCard(title: "串流区服与云游戏节点", icon: "globe", tint: XboxTheme.info) {
@@ -1129,11 +1545,20 @@ struct SettingsView: View {
                     ProgressView()
                         .controlSize(.small)
                         .tint(XboxTheme.emeraldBright)
+                } else if appState.updateChecker.isDownloadingUpdate {
+                    HStack(spacing: 6) {
+                        ProgressView(value: appState.updateChecker.downloadProgress)
+                            .frame(width: 72)
+                            .tint(XboxTheme.emeraldBright)
+                        Text("\(Int((appState.updateChecker.downloadProgress * 100).rounded()))%")
+                            .font(.caption2.monospacedDigit().bold())
+                            .foregroundStyle(XboxTheme.emeraldBright)
+                    }
                 } else if appState.updateChecker.availableUpdate != nil {
                     Button {
                         appState.updateChecker.openUpdateDownload()
                     } label: {
-                        Text(XboxPlatform.isMac ? "下载 DMG" : "前往更新")
+                        Text(XboxPlatform.isMac ? "一键下载更新" : "前往更新")
                             .font(.caption.bold())
                             .foregroundStyle(.black)
                             .padding(.horizontal, 12)
