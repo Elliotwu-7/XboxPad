@@ -18,6 +18,7 @@ struct StreamPlayerView: View {
     @State private var showHUD: Bool
     @State private var manualVirtualGamepad = false
     @State private var showCastSheet = false
+    @State private var showSettingsSheet = false
     @State private var isBlackoutDimmerActive = false
     @State private var shutterFlashOpacity: Double = 0
 
@@ -213,6 +214,12 @@ struct StreamPlayerView: View {
                     }
                 }
                 .keyboardShortcut("m", modifiers: [.command, .option])
+                Button("") {
+                    showOverlayBar = false
+                    showMoreDrawer = false
+                    showSettingsSheet.toggle()
+                }
+                .keyboardShortcut(",", modifiers: .command)
             }
             .frame(width: 0, height: 0)
             .opacity(0.001)
@@ -222,6 +229,19 @@ struct StreamPlayerView: View {
         .xboxHideSystemChrome()
         .sheet(isPresented: $showCastSheet) {
             castControlSheet
+        }
+        .sheet(isPresented: $showSettingsSheet) {
+            SettingsView(
+                gamepadManager: appState.gamepadManager,
+                initialCategory: .gamepad,
+                onClose: {
+                    showSettingsSheet = false
+                }
+            )
+            .environmentObject(appState)
+            #if os(macOS)
+            .frame(minWidth: 720, minHeight: 580)
+            #endif
         }
         .onAppear {
             XboxPlatform.setIdleSleepDisabled(true)
@@ -253,6 +273,7 @@ struct StreamPlayerView: View {
         }
         .onChange(of: appState.settings) { newSettings in
             session.updateSettings(newSettings)
+            showHUD = newSettings.showPerformanceHUD
             externalDisplay.updateStreamHDR(newSettings.hdrToneMode)
             externalDisplay.isExternalOutputEnabled = newSettings.externalDisplayFullscreen
         }
@@ -479,6 +500,16 @@ struct StreamPlayerView: View {
                     }
 
                     overlayChipButton(
+                        title: "设置",
+                        systemImage: "slider.horizontal.3",
+                        active: showSettingsSheet,
+                        activeColor: XboxTheme.emeraldBright
+                    ) {
+                        closeOverlayBar()
+                        showSettingsSheet = true
+                    }
+
+                    overlayChipButton(
                         title: "更多",
                         systemImage: showMoreDrawer ? "chevron.up.circle.fill" : "ellipsis.circle.fill",
                         active: showMoreDrawer,
@@ -607,11 +638,13 @@ struct StreamPlayerView: View {
             }
 
             drawerTile(
-                title: "关闭栏",
-                systemImage: "xmark.circle.fill",
-                active: false
+                title: "设置手柄",
+                systemImage: "slider.horizontal.3",
+                active: showSettingsSheet,
+                activeColor: XboxTheme.emeraldBright
             ) {
                 closeOverlayBar()
+                showSettingsSheet = true
             }
         }
         .padding(12)
