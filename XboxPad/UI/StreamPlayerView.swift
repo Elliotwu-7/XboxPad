@@ -156,11 +156,11 @@ struct StreamPlayerView: View {
                         .padding(.horizontal, 16)
 
                     if showKMPanel {
-                        kmQuickTuningPanel
+                        AnyView(kmQuickTuningPanel)
                             .padding(.horizontal, 16)
                             .transition(.move(edge: .top).combined(with: .opacity))
                     } else if showMoreDrawer {
-                        moreToolsDrawer
+                        AnyView(moreToolsDrawer)
                             .padding(.horizontal, 16)
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
@@ -179,7 +179,7 @@ struct StreamPlayerView: View {
                case .streaming = session.connectionState {
                 VStack {
                     Spacer()
-                    keymapHintStrip
+                    AnyView(keymapHintStrip)
                         .padding(.horizontal, 16)
                         .padding(.bottom, session.toastMessage != nil ? 76 : 14)
                 }
