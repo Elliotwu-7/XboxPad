@@ -104,13 +104,13 @@ final class AuthSyncService: ObservableObject {
                 txtRecord: txt
             )
 
-            newListener.stateUpdateHandler = { [weak self] state in
+            newListener.stateUpdateHandler = { [weak self, weak newListener] state in
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
+                    guard let self, let active = newListener, self.listener === active else { return }
                     switch state {
                     case .ready:
                         self.isAdvertising = true
-                        Self.logger.info("auth sync advertising ready")
+                        Self.logger.notice("auth sync advertising ready")
                     case .failed(let err):
                         self.isAdvertising = false
                         Self.logger.error("auth sync listener failed: \(err.localizedDescription, privacy: .public)")
@@ -126,8 +126,8 @@ final class AuthSyncService: ObservableObject {
                 self?.handleIncomingConnection(conn)
             }
 
-            newListener.start(queue: netQueue)
             self.listener = newListener
+            newListener.start(queue: netQueue)
         } catch {
             Self.logger.error("auth sync listener creation failed: \(error.localizedDescription, privacy: .public)")
             isAdvertising = false
@@ -135,8 +135,11 @@ final class AuthSyncService: ObservableObject {
     }
 
     func stopAdvertising() {
-        listener?.cancel()
+        let old = listener
         listener = nil
+        old?.stateUpdateHandler = nil
+        old?.newConnectionHandler = nil
+        old?.cancel()
         isAdvertising = false
         incomingRequest = nil
         payloadProvider = nil
@@ -234,9 +237,9 @@ final class AuthSyncService: ObservableObject {
         let descriptor = NWBrowser.Descriptor.bonjourWithTXTRecord(type: Self.bonjourServiceType, domain: nil)
         let newBrowser = NWBrowser(for: descriptor, using: params)
 
-        newBrowser.stateUpdateHandler = { [weak self] state in
+        newBrowser.stateUpdateHandler = { [weak self, weak newBrowser] state in
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, let active = newBrowser, self.browser === active else { return }
                 switch state {
                 case .ready:
                     self.isBrowsing = true
@@ -248,7 +251,7 @@ final class AuthSyncService: ObservableObject {
             }
         }
 
-        newBrowser.browseResultsChangedHandler = { [weak self] results, _ in
+        newBrowser.browseResultsChangedHandler = { [weak self, weak newBrowser] results, _ in
             let peers: [NearbySyncPeer] = results.compactMap { res in
                 guard case let .service(name, _, _, _) = res.endpoint else { return nil }
                 var deviceName = name
@@ -267,17 +270,21 @@ final class AuthSyncService: ObservableObject {
             .sorted { $0.deviceName.localizedCaseInsensitiveCompare($1.deviceName) == .orderedAscending }
 
             Task { @MainActor [weak self] in
-                self?.discoveredPeers = peers
+                guard let self, let active = newBrowser, self.browser === active else { return }
+                self.discoveredPeers = peers
             }
         }
 
-        newBrowser.start(queue: netQueue)
         self.browser = newBrowser
+        newBrowser.start(queue: netQueue)
     }
 
     func stopBrowsing() {
-        browser?.cancel()
+        let old = browser
         browser = nil
+        old?.stateUpdateHandler = nil
+        old?.browseResultsChangedHandler = nil
+        old?.cancel()
         isBrowsing = false
         discoveredPeers = []
     }

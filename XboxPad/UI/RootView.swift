@@ -116,6 +116,7 @@ struct RootView: View {
                     onDismiss: {
                         appState.isStreamOverlayOpen = false
                         appState.activeStreamTarget = nil
+                        Task { await appState.refreshConsoles() }
                     }
                 )
                 .environmentObject(appState)

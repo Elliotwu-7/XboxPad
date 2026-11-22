@@ -86,6 +86,9 @@ struct SettingsView: View {
             if !appState.settings.customIceUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 showCustomIceEditor = true
             }
+            if appState.isAuthenticated && !appState.authSyncService.isAdvertising {
+                appState.startNearbyAuthSyncAdvertiser()
+            }
         }
         .alert("确定退出当前 Xbox 账号？", isPresented: $showLogoutConfirm) {
             Button("取消", role: .cancel) {}
@@ -1466,11 +1469,17 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                XboxStatusPill(
-                    text: appState.authSyncService.isAdvertising ? "已就绪" : "未启动",
-                    color: appState.authSyncService.isAdvertising ? XboxTheme.emerald : .secondary,
-                    pulse: appState.authSyncService.isAdvertising
-                )
+                Button {
+                    appState.startNearbyAuthSyncAdvertiser()
+                    appState.showToast("已重新广播局域网加密同步服务")
+                } label: {
+                    XboxStatusPill(
+                        text: appState.authSyncService.isAdvertising ? "已就绪" : "未启动",
+                        color: appState.authSyncService.isAdvertising ? XboxTheme.emerald : .secondary,
+                        pulse: appState.authSyncService.isAdvertising
+                    )
+                }
+                .buttonStyle(.plain)
             }
 
             cardDivider

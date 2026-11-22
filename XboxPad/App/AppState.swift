@@ -262,6 +262,25 @@ final class AppState: ObservableObject {
     }
 
     func wakeConsole(_ console: XboxConsole, thenStream: Bool) async {
+        if thenStream {
+            // Immediately launch stream (Xbox /v5/sessions/home/play natively wakes ConnectedStandby consoles)
+            // while firing XCCS WakeUp best-effort in parallel so xccs errors never block streaming.
+            activeStreamTarget = .home(console)
+            Task {
+                if let snapshot = try? await authService.getValidSessionSnapshot(
+                    forceRefresh: false,
+                    forceRegionIP: settings.forceRegionIP
+                ) {
+                    try? await XboxHomeAPI.sendPowerCommand(
+                        consoleId: console.serverId,
+                        wakeUp: true,
+                        webToken: snapshot.webToken
+                    )
+                }
+            }
+            return
+        }
+
         do {
             let snapshot = try await authService.getValidSessionSnapshot(
                 forceRefresh: false,
@@ -273,13 +292,8 @@ final class AppState: ObservableObject {
                 webToken: snapshot.webToken
             )
             showToast("已向 \(console.deviceName) 发送唤醒指令")
-            if thenStream {
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
-                activeStreamTarget = .home(console)
-            } else {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                await refreshConsoles()
-            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await refreshConsoles()
         } catch {
             showToast("唤醒失败：\(error.localizedDescription)")
         }

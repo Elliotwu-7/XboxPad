@@ -119,7 +119,9 @@ struct XboxConsole: Codable, Identifiable, Hashable {
     var powerDisplayText: String {
         if isOnline { return "已开机" }
         if isStandby { return "待机可唤醒" }
-        return powerState.isEmpty ? "离线" : powerState
+        if powerState.caseInsensitiveCompare("Off") == .orderedSame { return "已关机" }
+        if powerState.caseInsensitiveCompare("SystemUpdate") == .orderedSame { return "系统更新中" }
+        return powerState.isEmpty || powerState.caseInsensitiveCompare("Unknown") == .orderedSame ? "离线" : powerState
     }
 
     var friendlyConsoleType: String {
