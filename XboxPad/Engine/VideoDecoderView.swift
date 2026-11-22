@@ -74,6 +74,7 @@ final class H264StreamRenderer: @unchecked Sendable {
     private var pacingModeLocked: VideoFramePacingMode = .auto
     private var interpolationEnabledLocked: Bool = false
     private var pacedQueue: [(pb: CVPixelBuffer, arrivedAt: CFTimeInterval)] = []
+    private var prevDisplayedRealPB: CVPixelBuffer?
     private var lastDisplayedRealPB: CVPixelBuffer?
     private var pendingRealPBForSecondSlot: (pb: CVPixelBuffer, arrivedAt: CFTimeInterval)?
     private var latestPipelineLatencyMsLocked: Double = 0
@@ -81,6 +82,10 @@ final class H264StreamRenderer: @unchecked Sendable {
     private var lastBurstSpikeTime: CFTimeInterval = 0
     private var smoothedPeakGapMs: Double = 16.7
     private var lastPacedPopTime: CFTimeInterval = 0
+    private var lastRealDisplayTimeLocked: CFTimeInterval = 0
+    private var lastDisplayTickTimeLocked: CFTimeInterval = 0
+    private var smoothedDisplayHzLocked: Double = 120.0
+    private var latestInterpPhaseLocked: Float = 0.5
     private var activePacingTargetDepth: Int = 0
     private var queuedIdrSerial: UInt64 = 0
     private var renderedCountForCacheFlush: UInt64 = 0
@@ -160,12 +165,17 @@ final class H264StreamRenderer: @unchecked Sendable {
             renderedFrameSerial = 0
             renderScheduled = false
             pacedQueue.removeAll(keepingCapacity: true)
+            prevDisplayedRealPB = nil
             lastDisplayedRealPB = nil
             pendingRealPBForSecondSlot = nil
             lastDecodedArrivalTime = 0
             lastBurstSpikeTime = 0
             smoothedPeakGapMs = 16.7
             lastPacedPopTime = 0
+            lastRealDisplayTimeLocked = 0
+            lastDisplayTickTimeLocked = 0
+            smoothedDisplayHzLocked = 120.0
+            latestInterpPhaseLocked = 0.5
             activePacingTargetDepth = 0
             presentedFramesInWindow = 0
             fpsWindowStartTime = 0
@@ -361,47 +371,104 @@ final class H264StreamRenderer: @unchecked Sendable {
         }
     }
 
-    /// Driven by `VideoDisplayUIView`'s 120Hz ProMotion `CADisplayLink` (every 8.33ms).
+    /// Driven by `CADisplayLink` at the monitor's native VSync (60Hz / 75Hz / 90Hz / 100Hz / 120Hz / 144Hz).
     /// - 60Hz pacing mode: pops 1 real decoded frame every 16.67ms VSync slot.
-    /// - 120Hz Metal optical-flow mode: strictly alternates EVERY 8.33ms tick:
-    ///     Slot A (even): render GPU-interpolated midpoint `t=0.5` between `(lastDisplayedRealPB, nextRealPB)`
-    ///     Slot B (odd):  render exact original `nextRealPB`
-    ///   Guarantees 100% strict chronological order (zero async reordering) and locked 120Hz fluidity.
+    /// - High-refresh Metal optical-flow mode:
+    ///     * >= 112Hz (iPad Pro / MacBook Pro 120Hz / 144Hz+): alternates exact midpoint (t=0.5) & real frame -> locked 120fps.
+    ///     * 68..112Hz (e.g. 75Hz / 90Hz / 100Hz Mac monitors): presents real 60Hz frames on time and synthesizes
+    ///       exact fractional-phase optical-flow frames on every intermediate VSync slot -> locked 75fps / 100fps!
     func handleDisplayTick(now: CFTimeInterval, targetTimestamp: CFTimeInterval) {
         var shouldSchedule = false
 
         os_unfair_lock_lock(&frameLock)
+        if lastDisplayTickTimeLocked > 0 {
+            let dt = now - lastDisplayTickTimeLocked
+            if dt > 0.002 && dt < 0.05 {
+                let instHz = 1.0 / dt
+                smoothedDisplayHzLocked = smoothedDisplayHzLocked * 0.88 + instHz * 0.12
+            }
+        }
+        lastDisplayTickTimeLocked = now
+
         if !isBackgroundedLocked {
             if interpolationEnabledLocked {
-                // Slot B: present the exact real frame paired with the midpoint we rendered 8.33ms ago
-                if let pendingReal = pendingRealPBForSecondSlot {
-                    pendingRealPBForSecondSlot = nil
-                    lastDisplayedRealPB = pendingReal.pb
-                    lastPacedPopTime = now
-                    latestPixelBuffer = pendingReal.pb
-                    latestPrevPixelBuffer = nil
-                    latestIsInterpolated = false
-                    pendingPresentTime = targetTimestamp
-                    latestPipelineLatencyMsLocked = max((targetTimestamp - pendingReal.arrivedAt) * 1000.0, 0.0)
-                    latestFrameSerial &+= 1
-                    if !renderScheduled {
-                        renderScheduled = true
-                        shouldSchedule = true
-                    }
-                } else if !pacedQueue.isEmpty {
-                    let target = max(activePacingTargetDepth, 1)
-                    // Smooth low-latency catch-up: if queue backed up above target (e.g. after an AWDL burst),
-                    // skip 1 midpoint slot and present the real frame directly so latency snaps back to ~18-26ms
-                    // instead of staying stuck 3-4 frames (70ms+) behind.
-                    let shouldCatchUp = pacedQueue.count > target
-                    let nextEntry = pacedQueue.removeFirst()
-                    if !shouldCatchUp, let prevReal = lastDisplayedRealPB {
-                        pendingRealPBForSecondSlot = nextEntry
+                if smoothedDisplayHzLocked >= 112.0 {
+                    // 120Hz+ display path: strict alternating (Midpoint t=0.5 -> Real Frame)
+                    if let pendingReal = pendingRealPBForSecondSlot {
+                        pendingRealPBForSecondSlot = nil
+                        prevDisplayedRealPB = lastDisplayedRealPB
+                        lastDisplayedRealPB = pendingReal.pb
                         lastPacedPopTime = now
+                        lastRealDisplayTimeLocked = now
+                        latestPixelBuffer = pendingReal.pb
+                        latestPrevPixelBuffer = nil
+                        latestIsInterpolated = false
+                        latestInterpPhaseLocked = 0.5
+                        pendingPresentTime = targetTimestamp
+                        latestPipelineLatencyMsLocked = max((targetTimestamp - pendingReal.arrivedAt) * 1000.0, 0.0)
+                        latestFrameSerial &+= 1
+                        if !renderScheduled {
+                            renderScheduled = true
+                            shouldSchedule = true
+                        }
+                    } else if !pacedQueue.isEmpty {
+                        let target = max(activePacingTargetDepth, 1)
+                        let shouldCatchUp = pacedQueue.count > target
+                        let nextEntry = pacedQueue.removeFirst()
+                        if !shouldCatchUp, let prevReal = lastDisplayedRealPB {
+                            pendingRealPBForSecondSlot = nextEntry
+                            lastPacedPopTime = now
+                            latestPixelBuffer = nextEntry.pb
+                            latestPrevPixelBuffer = prevReal
+                            latestIsInterpolated = true
+                            latestInterpPhaseLocked = 0.5
+                            interpolatedActiveLocked = true
+                            pendingPresentTime = targetTimestamp
+                            latestPipelineLatencyMsLocked = max((targetTimestamp - nextEntry.arrivedAt) * 1000.0, 0.0)
+                            latestFrameSerial &+= 1
+                            if !renderScheduled {
+                                renderScheduled = true
+                                shouldSchedule = true
+                            }
+                        } else {
+                            prevDisplayedRealPB = lastDisplayedRealPB
+                            lastDisplayedRealPB = nextEntry.pb
+                            lastPacedPopTime = now
+                            lastRealDisplayTimeLocked = now
+                            latestPixelBuffer = nextEntry.pb
+                            latestPrevPixelBuffer = nil
+                            latestIsInterpolated = false
+                            latestInterpPhaseLocked = 0.5
+                            pendingPresentTime = targetTimestamp
+                            latestPipelineLatencyMsLocked = max((targetTimestamp - nextEntry.arrivedAt) * 1000.0, 0.0)
+                            latestFrameSerial &+= 1
+                            if !renderScheduled {
+                                renderScheduled = true
+                                shouldSchedule = true
+                            }
+                        }
+                    }
+                } else {
+                    // 75Hz / 90Hz / 100Hz (and any non-120Hz high-refresh monitor) path:
+                    // Present real 60Hz frames on cadence, and synthesize exact fractional optical-flow
+                    // frames on every intermediate VSync slot so the queue never backs up!
+                    pendingRealPBForSecondSlot = nil
+                    let target = max(activePacingTargetDepth, 1)
+                    let realDue = !pacedQueue.isEmpty && (
+                        lastRealDisplayTimeLocked == 0
+                            || (now - lastRealDisplayTimeLocked) >= 0.0142
+                            || pacedQueue.count > target
+                    )
+                    if realDue {
+                        let nextEntry = pacedQueue.removeFirst()
+                        prevDisplayedRealPB = lastDisplayedRealPB
+                        lastDisplayedRealPB = nextEntry.pb
+                        lastPacedPopTime = now
+                        lastRealDisplayTimeLocked = now
                         latestPixelBuffer = nextEntry.pb
-                        latestPrevPixelBuffer = prevReal
-                        latestIsInterpolated = true
-                        interpolatedActiveLocked = true
+                        latestPrevPixelBuffer = nil
+                        latestIsInterpolated = false
+                        latestInterpPhaseLocked = 0.5
                         pendingPresentTime = targetTimestamp
                         latestPipelineLatencyMsLocked = max((targetTimestamp - nextEntry.arrivedAt) * 1000.0, 0.0)
                         latestFrameSerial &+= 1
@@ -409,14 +476,17 @@ final class H264StreamRenderer: @unchecked Sendable {
                             renderScheduled = true
                             shouldSchedule = true
                         }
-                    } else {
-                        lastDisplayedRealPB = nextEntry.pb
-                        lastPacedPopTime = now
-                        latestPixelBuffer = nextEntry.pb
-                        latestPrevPixelBuffer = nil
-                        latestIsInterpolated = false
+                    } else if let prevReal = prevDisplayedRealPB,
+                              let currReal = lastDisplayedRealPB,
+                              lastRealDisplayTimeLocked > 0 {
+                        let elapsed = now - lastRealDisplayTimeLocked
+                        let phase = Float(min(max(elapsed / (1.0 / 60.0), 0.22), 0.78))
+                        latestPixelBuffer = currReal
+                        latestPrevPixelBuffer = prevReal
+                        latestIsInterpolated = true
+                        latestInterpPhaseLocked = phase
+                        interpolatedActiveLocked = true
                         pendingPresentTime = targetTimestamp
-                        latestPipelineLatencyMsLocked = max((targetTimestamp - nextEntry.arrivedAt) * 1000.0, 0.0)
                         latestFrameSerial &+= 1
                         if !renderScheduled {
                             renderScheduled = true
@@ -481,12 +551,15 @@ final class H264StreamRenderer: @unchecked Sendable {
         renderedFrameSerial = 0
         renderScheduled = false
         pacedQueue.removeAll(keepingCapacity: false)
+        prevDisplayedRealPB = nil
         lastDisplayedRealPB = nil
         pendingRealPBForSecondSlot = nil
         lastDecodedArrivalTime = 0
         lastBurstSpikeTime = 0
         smoothedPeakGapMs = 16.7
         lastPacedPopTime = 0
+        lastRealDisplayTimeLocked = 0
+        lastDisplayTickTimeLocked = 0
         activePacingTargetDepth = 0
         interpolatedActiveLocked = false
         os_unfair_lock_unlock(&frameLock)
@@ -532,12 +605,15 @@ final class H264StreamRenderer: @unchecked Sendable {
         renderedFrameSerial = 0
         renderScheduled = false
         pacedQueue.removeAll(keepingCapacity: false)
+        prevDisplayedRealPB = nil
         lastDisplayedRealPB = nil
         pendingRealPBForSecondSlot = nil
         lastDecodedArrivalTime = 0
         lastBurstSpikeTime = 0
         smoothedPeakGapMs = 16.7
         lastPacedPopTime = 0
+        lastRealDisplayTimeLocked = 0
+        lastDisplayTickTimeLocked = 0
         activePacingTargetDepth = 0
         interpolatedActiveLocked = false
         os_unfair_lock_unlock(&frameLock)
@@ -943,6 +1019,7 @@ final class H264StreamRenderer: @unchecked Sendable {
             let metalFXEnabled = metalFXEnabledLocked
             let thermalMult = thermalEDRMultiplierLocked
             let edrHeadroom = currentEDRHeadroomLocked
+            let interpPhase = latestInterpPhaseLocked
             let presentAt = pendingPresentTime
             renderedFrameSerial = serial
             os_unfair_lock_unlock(&frameLock)
@@ -957,6 +1034,7 @@ final class H264StreamRenderer: @unchecked Sendable {
                 metalFXEnabled: metalFXEnabled,
                 thermalEDRMultiplier: thermalMult,
                 edrHeadroom: edrHeadroom,
+                interpPhase: interpPhase,
                 presentAt: presentAt
             )
         }
@@ -1148,23 +1226,36 @@ final class H264StreamRenderer: @unchecked Sendable {
             if (u.hdrMode < 0.5) {
                 return lin;
             }
-            // 1. Subtle linear contrast curve deepens shadows for OLED/XDR punch without crushing detail
-            lin = pow(max(lin, float3(0.0)), float3(u.hdrContrast));
+            float peak = clamp(min(u.edrHeadroom, u.hdrMaxPeak), 1.0, 4.0);
+            bool hasHardwareEDR = (peak > 1.04);
 
-            // 2. Luminance-preserving wide-gamut color vibrancy (extendedLinearSRGB maps naturally into Display P3)
+            // 1. Contrast shaping: hardware EDR uses subtle shadow depth; SDR displays get stronger filmic punch
+            float effectiveContrast = hasHardwareEDR ? u.hdrContrast : (1.0 + (u.hdrContrast - 1.0) * 1.95);
+            lin = pow(max(lin, float3(0.0)), float3(effectiveContrast));
+
+            // 2. Luminance-preserving color vibrancy
+            float effectiveSat = hasHardwareEDR ? u.hdrSaturation : (1.0 + (u.hdrSaturation - 1.0) * 1.35);
             float luma = dot(lin, float3(0.2126, 0.7152, 0.0722));
-            lin = max(mix(float3(luma), lin, u.hdrSaturation), float3(-0.25));
+            lin = max(mix(float3(luma), lin, effectiveSat), float3(hasHardwareEDR ? -0.25 : 0.0));
             luma = max(dot(lin, float3(0.2126, 0.7152, 0.0722)), 1e-5);
 
-            // 3. Soft-knee Inverse Tone Mapping into hardware EDR headroom (> 1.0)
-            // Midtones & UI text remain comfortable (~1.0x); bright speculars/sun/neon expand into XDR/OLED peak!
-            float peak = clamp(min(u.edrHeadroom, u.hdrMaxPeak), 1.0, 4.0);
+            // 3. Highlight expansion:
+            //    - Hardware EDR/XDR/OLED display (>1.04x): expand highlights into true >1.0 peak nits!
+            //    - SDR display (1.0x, e.g. Mac external monitor with system HDR off): perceptual filmic
+            //      highlight lift + bright specular pop so Natural / Vivid / Cinema remain clearly distinct!
             float knee = u.hdrKnee;
-            if (luma > knee && peak > 1.02) {
-                float t = clamp((luma - knee) / max(1.0 - knee, 0.05), 0.0, 1.0);
-                float smoothT = t * t * (3.0 - 2.0 * t);
-                float targetLuma = mix(luma, peak, smoothT);
-                lin *= (targetLuma / luma);
+            if (hasHardwareEDR) {
+                if (luma > knee) {
+                    float t = clamp((luma - knee) / max(1.0 - knee, 0.05), 0.0, 1.0);
+                    float smoothT = t * t * (3.0 - 2.0 * t);
+                    float targetLuma = mix(luma, peak, smoothT);
+                    lin *= (targetLuma / luma);
+                }
+            } else {
+                // Filmic perceptual HDR curve within SDR [0..1] range (lifted highlights + richer micro-contrast)
+                float boost = clamp((u.hdrMaxPeak - 1.0) * 0.14, 0.08, 0.30);
+                float shoulder = luma * (1.0 + boost) / (1.0 + boost * luma);
+                lin = clamp(lin * (shoulder / luma), float3(0.0), float3(1.0));
             }
             return lin;
         }
@@ -1200,9 +1291,10 @@ final class H264StreamRenderer: @unchecked Sendable {
             float staticMask = smoothstep(0.010, 0.032, abs(rawCurrY - rawPrevY));
             mv *= staticMask;
 
-            // Bidirectional midpoint warp (phase = 0.5) with CAS sharpening + 8-bit debanding
-            float2 uvPrev = clamp(uv - 0.5 * mv, float2(0.0), float2(1.0));
-            float2 uvCurr = clamp(uv + 0.5 * mv, float2(0.0), float2(1.0));
+            // Bidirectional fractional-phase warp (0.5 on 120Hz, time-aligned phase on 75Hz/100Hz displays)
+            float phase = clamp(u.pad1, 0.15, 0.85);
+            float2 uvPrev = clamp(uv - phase * mv, float2(0.0), float2(1.0));
+            float2 uvCurr = clamp(uv + (1.0 - phase) * mv, float2(0.0), float2(1.0));
             float yPrev = sampleDebandedLuma(prevY, uvPrev, u, sampleSharpenedLuma(prevY, uvPrev, u));
             float yCurr = sampleDebandedLuma(currY, uvCurr, u, sampleSharpenedLuma(currY, uvCurr, u));
             float yExact = sampleDebandedLuma(currY, uv, u, sampleSharpenedLuma(currY, uv, u));
@@ -1214,7 +1306,7 @@ final class H264StreamRenderer: @unchecked Sendable {
             float warpDiff = length(rgbPrev - rgbCurr);
             float consistency = 1.0 - smoothstep(0.14, 0.42, warpDiff);
             float blendW = conf * consistency;
-            float3 blended = 0.5 * (rgbPrev + rgbCurr);
+            float3 blended = mix(rgbPrev, rgbCurr, phase);
             float3 srgbOut = mix(rgbExactCurr, blended, blendW);
             return float4(applyAutoHDR(srgbOut, u), 1.0);
         }
@@ -1326,6 +1418,7 @@ final class H264StreamRenderer: @unchecked Sendable {
         metalFXEnabled: Bool,
         thermalEDRMultiplier: Float,
         edrHeadroom: Float,
+        interpPhase: Float,
         presentAt: CFTimeInterval
     ) {
         guard !isBackgrounded(),
@@ -1495,7 +1588,7 @@ final class H264StreamRenderer: @unchecked Sendable {
                 hdrSaturation: hdrSaturation,
                 hdrKnee: hdrKnee,
                 debandStrength: debandStrength,
-                pad1: 0.0,
+                pad1: interpPhase,
                 pad2: 0.0
             )
 
@@ -1917,10 +2010,11 @@ final class VideoDisplayNSView: NSView {
     var onDrawableSizeChanged: (() -> Void)?
     var onDisplayTick: ((CFTimeInterval, CFTimeInterval, Float) -> Void)?
     private var proMotionLink: CADisplayLink?
+    private var screenChangeObserver: NSObjectProtocol?
+    private var screenParamsObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        wantsLayer = true
         layerContentsRedrawPolicy = .duringViewResize
 
         metalLayer.device = MTLCreateSystemDefaultDevice()
@@ -1934,7 +2028,10 @@ final class VideoDisplayNSView: NSView {
         metalLayer.maximumDrawableCount = 3
         metalLayer.isOpaque = true
         metalLayer.backgroundColor = NSColor.black.cgColor
-        layer = metalLayer
+
+        // Canonical AppKit layer-hosting order: assign `layer` BEFORE setting `wantsLayer = true`.
+        self.layer = metalLayer
+        self.wantsLayer = true
     }
 
     override func makeBackingLayer() -> CALayer {
@@ -1946,6 +2043,7 @@ final class VideoDisplayNSView: NSView {
     }
 
     deinit {
+        stopScreenObservers()
         proMotionLink?.invalidate()
     }
 
@@ -1962,11 +2060,40 @@ final class VideoDisplayNSView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window != nil {
+        stopScreenObservers()
+        if let win = window {
             updateDrawableSize()
             startProMotionLock()
+            let nc = NotificationCenter.default
+            screenChangeObserver = nc.addObserver(
+                forName: NSWindow.didChangeScreenNotification,
+                object: win,
+                queue: .main
+            ) { [weak self] _ in
+                self?.updateDrawableSize()
+                self?.startProMotionLock()
+            }
+            screenParamsObserver = nc.addObserver(
+                forName: NSApplication.didChangeScreenParametersNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.updateDrawableSize()
+                self?.startProMotionLock()
+            }
         } else {
             stopProMotionLock()
+        }
+    }
+
+    private func stopScreenObservers() {
+        if let obs = screenChangeObserver {
+            NotificationCenter.default.removeObserver(obs)
+            screenChangeObserver = nil
+        }
+        if let obs = screenParamsObserver {
+            NotificationCenter.default.removeObserver(obs)
+            screenParamsObserver = nil
         }
     }
 

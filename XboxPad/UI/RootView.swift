@@ -236,6 +236,7 @@ private struct StreamEventContainerView<Content: View>: NSViewControllerRepresen
 
 private final class StreamGCEventNSViewController<Content: View>: GCEventViewController {
     private let hostingController: NSHostingController<Content>
+    private var keyEventMonitor: Any?
 
     init(rootView: Content) {
         self.hostingController = NSHostingController(rootView: rootView)
@@ -244,6 +245,10 @@ private final class StreamGCEventNSViewController<Content: View>: GCEventViewCon
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        removeKeyMonitor()
     }
 
     override func loadView() {
@@ -266,6 +271,38 @@ private final class StreamGCEventNSViewController<Content: View>: GCEventViewCon
     override func viewDidAppear() {
         super.viewDidAppear()
         controllerUserInteractionEnabled = false
+        installKeyMonitor()
+    }
+
+    override func viewWillDisappear() {
+        super.viewWillDisappear()
+        removeKeyMonitor()
+    }
+
+    /// Consume regular gameplay keystrokes in AppKit's responder chain so macOS never plays
+    /// the unhandled-key system alert beep ("嘟嘟嘟") while GCKeyboard delivers raw keys to Xbox.
+    private func installKeyMonitor() {
+        guard keyEventMonitor == nil else { return }
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            guard let self, let win = self.view.window, win.isKeyWindow else {
+                return event
+            }
+            // Allow system/app Command shortcuts (⌘F, ⌘,, ⌥⌘M, ⌘Q, ⌘W) and sheets/text fields through.
+            if event.modifierFlags.contains(.command) {
+                return event
+            }
+            if win.attachedSheet != nil || win.firstResponder is NSTextView {
+                return event
+            }
+            return nil
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let monitor = keyEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyEventMonitor = nil
+        }
     }
 
     func updateRootView(_ rootView: Content) {

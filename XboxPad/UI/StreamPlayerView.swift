@@ -287,7 +287,7 @@ struct StreamPlayerView: View {
             guard s.fps >= 0 else { return "--" }
             let dispFps = session.videoRenderer.measuredDisplayFps
             if appState.settings.frameInterpolation120Hz && session.videoRenderer.isHardwareInterpolationActive {
-                let shown = dispFps >= 70 ? dispFps : (s.fps * 2.0)
+                let shown = dispFps >= 65 ? dispFps : (s.fps * 2.0)
                 return "\(Int(shown.rounded()))*"
             }
             return String(format: "%.0f", s.fps)
