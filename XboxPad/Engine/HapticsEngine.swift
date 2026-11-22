@@ -62,6 +62,9 @@ final class HapticsEngine: @unchecked Sendable {
     private var pendingSequenceWorkItem: DispatchWorkItem?
     private var auxSlotEngines: [Int: HapticsEngine] = [:]
     private let isChildSlotEngine: Bool
+    private var isPhoneTapticFallback = false
+    private var lastPhonePunchTime: CFTimeInterval = 0
+    private var lastPhoneEnergy: Float = 0
 
     var settings = AppSettings()
 
@@ -206,14 +209,15 @@ final class HapticsEngine: @unchecked Sendable {
             let handleGain = Float(self.settings.handleRumbleStrength)
             let triggerGain = Float(self.settings.triggerRumbleStrength)
 
-            var leftHandle = Self.perceptualBoost(strongMagnitude, gain: handleGain)
-            var rightHandle = Self.perceptualBoost(weakMagnitude, gain: handleGain)
-            let lt = Self.perceptualBoost(leftTrigger, gain: triggerGain)
-            let rt = Self.perceptualBoost(rightTrigger, gain: triggerGain)
+            var leftHandle = Self.perceptualBoost(strongMagnitude, gain: handleGain, isPhoneLRA: self.isPhoneTapticFallback)
+            var rightHandle = Self.perceptualBoost(weakMagnitude, gain: handleGain, isPhoneLRA: self.isPhoneTapticFallback)
+            let lt = Self.perceptualBoost(leftTrigger, gain: triggerGain, isPhoneLRA: self.isPhoneTapticFallback)
+            let rt = Self.perceptualBoost(rightTrigger, gain: triggerGain, isPhoneLRA: self.isPhoneTapticFallback)
 
             if !self.supportsTriggerRumble && self.settings.fallbackTriggerToHandles {
-                leftHandle = Self.clamp01(max(leftHandle, lt * 0.65))
-                rightHandle = Self.clamp01(max(rightHandle, rt * 0.65))
+                let triggerFold: Float = self.isPhoneTapticFallback ? 0.85 : 0.65
+                leftHandle = Self.clamp01(max(leftHandle, lt * triggerFold))
+                rightHandle = Self.clamp01(max(rightHandle, rt * triggerFold))
             }
 
             let maxEnergy = max(leftHandle, rightHandle, lt, rt)
@@ -276,8 +280,18 @@ final class HapticsEngine: @unchecked Sendable {
         if sharedHandleState {
             let combined = max(leftHandle, rightHandle)
             if combined > 0.005 {
+                if isPhoneTapticFallback {
+                    let now = CACurrentMediaTime()
+                    let energyJump = combined - lastPhoneEnergy
+                    if (lastPhoneEnergy <= 0.05 || energyJump >= 0.22) && (now - lastPhonePunchTime) >= 0.065 {
+                        lastPhonePunchTime = now
+                        firePhoneTransientPunch(intensity: min(1.0, combined * 1.15), sharpness: rightHandle > leftHandle ? 0.85 : 0.62)
+                    }
+                    lastPhoneEnergy = combined
+                }
                 driveChannel(locality: .leftHandle, intensity: combined, durationSec: durationSec)
             } else {
+                lastPhoneEnergy = 0
                 muteChannel(.leftHandle)
             }
         } else {
@@ -337,7 +351,7 @@ final class HapticsEngine: @unchecked Sendable {
             if controller == nil && CHHapticEngine.capabilitiesForHardware().supportsHaptics {
                 if let phoneEngine = try? CHHapticEngine() {
                     phoneEngine.isAutoShutdownEnabled = false
-                    let state = ChannelState(locality: .default, sharpness: 0.45, engine: phoneEngine)
+                    let state = ChannelState(locality: .default, sharpness: 0.62, engine: phoneEngine)
                     phoneEngine.stoppedHandler = { [weak self, weak state] _ in
                         self?.queue.async {
                             state?.isEngineStarted = false
@@ -360,12 +374,13 @@ final class HapticsEngine: @unchecked Sendable {
                     channels[.default] = state
                     channels[.leftHandle] = state
                     channels[.rightHandle] = state
+                    isPhoneTapticFallback = true
                     supportsHandleRumble = true
                     supportsTriggerRumble = false
                     if (try? phoneEngine.start()) != nil {
                         state.isEngineStarted = true
                     }
-                    Self.logger.info("haptics bound to iPhone Taptic Engine fallback")
+                    Self.logger.info("haptics bound to iPhone Taptic Engine fallback (enhanced LRA)")
                     return
                 }
             }
@@ -596,12 +611,44 @@ final class HapticsEngine: @unchecked Sendable {
         channels.removeAll()
         supportedLocalities.removeAll()
         boundController = nil
+        isPhoneTapticFallback = false
+        lastPhoneEnergy = 0
     }
 
-    /// Nonlinear perceptual boost compensating for Xbox ERM motor static-friction deadband over Bluetooth.
-    private static func perceptualBoost(_ raw: Float, gain: Float) -> Float {
+    /// Fires a crisp transient kick on iPhone's linear Taptic Engine at rumble onset/spikes
+    /// so impacts, gunshots, and collisions pack noticeable physical punch.
+    private func firePhoneTransientPunch(intensity: Float, sharpness: Float) {
+        guard let state = channels[.default] else { return }
+        do {
+            if !state.isEngineStarted {
+                try state.engine.start()
+                state.isEngineStarted = true
+            }
+            let event = CHHapticEvent(
+                eventType: .hapticTransient,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: Self.clamp01(intensity)),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: Self.clamp01(sharpness)),
+                ],
+                relativeTime: 0
+            )
+            let pattern = try CHHapticPattern(events: [event], parameters: [])
+            let player = try state.engine.makePlayer(with: pattern)
+            try player.start(atTime: CHHapticTimeImmediate)
+        } catch {
+            // Best-effort onset punch; continuous channel continues normally
+        }
+    }
+
+    /// Nonlinear perceptual boost compensating for ERM motor deadband (controllers)
+    /// and LRA linear actuator headroom (iPhone Taptic Engine).
+    private static func perceptualBoost(_ raw: Float, gain: Float, isPhoneLRA: Bool = false) -> Float {
         guard raw.isFinite, raw > 0.008 else { return 0 }
         let normalized = clamp01(raw)
+        if isPhoneLRA {
+            let curved = 0.40 + 0.60 * powf(normalized, 0.55)
+            return clamp01(curved * max(gain, 0.25))
+        }
         let curved = 0.14 + 0.86 * powf(normalized, 0.72)
         return clamp01(curved * gain)
     }

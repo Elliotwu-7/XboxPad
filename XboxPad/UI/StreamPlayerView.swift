@@ -171,8 +171,11 @@ struct StreamPlayerView: View {
             }
 
             // Compact bottom Keymap Hint HUD for K&M Emulation on non-K&M games (toggle with F1)
+            // Only shown on macOS or when a hardware keyboard is actually connected (never clutters touch-only iPhone/iPad!)
             if showKeymapHUD,
                appState.settings.keyboardMouseMode == .gamepadEmulation,
+               (XboxPlatform.isMac || appState.gamepadManager.telemetry.keyboardConnected),
+               !shouldShowVirtualGamepad,
                !showOverlayBar,
                !showKMPanel,
                !externalDisplay.isRenderingExternally,
@@ -618,16 +621,28 @@ struct StreamPlayerView: View {
                         }
                     }
 
+                    if XboxPlatform.isMac || appState.gamepadManager.telemetry.keyboardConnected || appState.gamepadManager.telemetry.mouseConnected {
+                        overlayChipButton(
+                            title: "键鼠",
+                            systemImage: "keyboard",
+                            active: showKMPanel || appState.settings.keyboardMouseMode != .off,
+                            activeColor: XboxTheme.info
+                        ) {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                                showMoreDrawer = false
+                                showKMPanel.toggle()
+                            }
+                        }
+                    }
+
                     overlayChipButton(
-                        title: "键鼠",
-                        systemImage: "keyboard",
-                        active: showKMPanel || appState.settings.keyboardMouseMode != .off,
+                        title: showHUD ? "监控开" : "监控关",
+                        systemImage: "speedometer",
+                        active: showHUD,
                         activeColor: XboxTheme.info
                     ) {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
-                            showMoreDrawer = false
-                            showKMPanel.toggle()
-                        }
+                        appState.settings.showPerformanceHUD.toggle()
+                        showHUD = appState.settings.showPerformanceHUD
                     }
 
                     overlayChipButton(
@@ -992,7 +1007,8 @@ struct StreamPlayerView: View {
                 active: showHUD,
                 activeColor: XboxTheme.info
             ) {
-                showHUD.toggle()
+                appState.settings.showPerformanceHUD.toggle()
+                showHUD = appState.settings.showPerformanceHUD
             }
 
             drawerTile(
