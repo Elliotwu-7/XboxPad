@@ -167,7 +167,7 @@ struct StreamPlayerView: View {
                 VStack {
                     Spacer()
                     Text(toast)
-                        .font(.caption.weight(.semibold))
+                        .font(.xbCaption.weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 9)
@@ -195,10 +195,10 @@ struct StreamPlayerView: View {
                     Color.black.ignoresSafeArea()
                     VStack(spacing: 10) {
                         Image(systemName: "moon.stars.fill")
-                            .font(.title2)
+                            .font(.xbTitle2)
                             .foregroundStyle(.white.opacity(0.24))
                         Text("外接投屏省电模式 · 轻点唤醒 iPad 控制台")
-                            .font(.caption)
+                            .font(.xbCaption)
                             .foregroundStyle(.white.opacity(0.24))
                     }
                 }
@@ -328,7 +328,7 @@ struct StreamPlayerView: View {
                 .fill(Color.red)
                 .frame(width: 8, height: 8)
             Text("REC \(recordingElapsedLabel)")
-                .font(.caption2.monospacedDigit().bold())
+                .font(.xbCaption2.monospacedDigit().bold())
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 11)
@@ -374,7 +374,7 @@ struct StreamPlayerView: View {
                         .fill(routeColor)
                         .frame(width: 6, height: 6)
                     Text(s.routeBadgeText)
-                        .font(.caption2.weight(.bold))
+                        .font(.xbCaption2.weight(.bold))
                         .foregroundStyle(routeColor)
                 }
                 hudDivider
@@ -411,7 +411,7 @@ struct StreamPlayerView: View {
             if isThermalWarning {
                 hudDivider
                 Image(systemName: "thermometer.high")
-                    .font(.caption2.bold())
+                    .font(.xbCaption2.bold())
                     .foregroundStyle(.orange)
             }
         }
@@ -430,10 +430,10 @@ struct StreamPlayerView: View {
     private func hudMetric(title: String, value: String, good: Bool) -> some View {
         HStack(spacing: 4) {
             Text(title)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.58))
+                .font(.system(size: XboxPlatform.isMac ? 12 : 10, weight: .medium))
+                .foregroundStyle(.white.opacity(0.62))
             Text(value)
-                .font(.caption2.monospacedDigit().bold())
+                .font(.xbCaption2.monospacedDigit().bold())
                 .foregroundStyle(good ? XboxTheme.emeraldBright : XboxTheme.warning)
         }
     }
@@ -453,7 +453,7 @@ struct StreamPlayerView: View {
                 onDismiss()
             } label: {
                 Label("退出", systemImage: "xmark")
-                    .font(.caption.bold())
+                    .font(.xbCaption.bold())
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 7)
@@ -463,7 +463,7 @@ struct StreamPlayerView: View {
 
             if !XboxPlatform.isPhone {
                 Text(compactStreamTitle)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.xbSubheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
@@ -488,7 +488,7 @@ struct StreamPlayerView: View {
                         }
                     } label: {
                         Label("Xbox", systemImage: "xbox.logo")
-                            .font(.caption.bold())
+                            .font(.xbCaption.bold())
                             .foregroundStyle(.white)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 7)
@@ -608,9 +608,9 @@ struct StreamPlayerView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.up")
-                            .font(.caption.bold())
+                            .font(.xbCaption.bold())
                         Text("收起")
-                            .font(.caption.bold())
+                            .font(.xbCaption.bold())
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11)
@@ -788,9 +788,9 @@ struct StreamPlayerView: View {
         Button(action: action) {
             VStack(spacing: 5) {
                 Image(systemName: systemImage)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.xbSubheadline.weight(.semibold))
                 Text(title)
-                    .font(.caption2.weight(.semibold))
+                    .font(.xbCaption2.weight(.semibold))
                     .lineLimit(1)
             }
             .foregroundStyle(active ? activeColor : .white.opacity(0.88))
@@ -820,7 +820,7 @@ struct StreamPlayerView: View {
                 VStack(spacing: 12) {
                     XboxIconBadge(systemName: "tv.and.hifispeaker.fill", color: XboxTheme.info, size: 64)
                     Text("外接显示器 16:9 全屏输出中")
-                        .font(.title2.bold())
+                        .font(.xbTitle2.bold())
                         .foregroundStyle(.white)
                     HStack(spacing: 10) {
                         if !externalDisplay.externalResolutionText.isEmpty {
@@ -885,14 +885,14 @@ struct StreamPlayerView: View {
                                         ? "已连接外接显示器 (\(externalDisplay.externalResolutionText))"
                                         : (externalDisplay.isScreenMirrored ? "正在 AirPlay 屏幕镜像投屏" : "未检测到有线/扩展外接屏")
                                 )
-                                .font(.headline)
+                                .font(.xbHeadline)
                                 .foregroundStyle(.white)
                                 Text(
                                     externalDisplay.hasExternalScene
                                         ? "刷新率 \(externalDisplay.externalRefreshHz)Hz · 支持原生 16:9 无黑边全屏"
                                         : "连接 USB-C / HDMI 线或开启扩展屏后自动 16:9 满屏输出"
                                 )
-                                .font(.caption)
+                                .font(.xbCaption)
                                 .foregroundStyle(.secondary)
                             }
                         }
@@ -921,10 +921,10 @@ struct StreamPlayerView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("选择 AirPlay 电视 / 音频设备")
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(.xbSubheadline.weight(.semibold))
                                     .foregroundStyle(.white)
                                 Text("切换 Apple TV、AirPlay 2 电视或 HomePod")
-                                    .font(.caption)
+                                    .font(.xbCaption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -935,7 +935,7 @@ struct StreamPlayerView: View {
                         .listRowBackground(XboxTheme.surface)
 
                         Text("无线整屏投屏：下拉 iPad 右上角「控制中心」→「屏幕镜像」选择电视即可。")
-                            .font(.caption)
+                            .font(.xbCaption)
                             .foregroundStyle(.secondary)
                             .listRowBackground(XboxTheme.surface)
                     } header: {
@@ -980,9 +980,9 @@ struct StreamPlayerView: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: systemImage)
-                    .font(.caption.weight(.semibold))
+                    .font(.xbCaption.weight(.semibold))
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(.xbCaption.weight(.semibold))
                     .lineLimit(1)
             }
             .foregroundStyle(active ? activeColor : .white.opacity(0.86))
@@ -1033,10 +1033,10 @@ struct StreamPlayerView: View {
 
             VStack(spacing: 6) {
                 Text(title)
-                    .font(.title3.bold())
+                    .font(.xbTitle3.bold())
                     .foregroundStyle(.white)
                 Text(message)
-                    .font(.subheadline)
+                    .font(.xbSubheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 400)

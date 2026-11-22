@@ -89,7 +89,7 @@ struct LoginView: View {
                         .font(.system(size: alignedLeading ? 42 : 34, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                     Text(XboxTheme.appVersionDisplay)
-                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .font(.xbCaption.monospacedDigit().weight(.semibold))
                         .foregroundStyle(XboxTheme.emeraldBright)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)
@@ -98,7 +98,7 @@ struct LoginView: View {
                 }
 
                 Text("原生超低延迟 Xbox 主机串流 & 云游戏客户端")
-                    .font(.headline.weight(.medium))
+                    .font(.xbHeadline.weight(.medium))
                     .foregroundStyle(.white.opacity(0.82))
                     .multilineTextAlignment(alignedLeading ? .leading : .center)
             }
@@ -133,10 +133,10 @@ struct LoginView: View {
             XboxIconBadge(systemName: icon, color: color, size: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.xbSubheadline.weight(.semibold))
                     .foregroundStyle(.white)
                 Text(subtitle)
-                    .font(.caption)
+                    .font(.xbCaption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -146,12 +146,12 @@ struct LoginView: View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(deviceCode == nil ? "连接你的 Xbox 账号" : "完成微软设备授权")
-                    .font(.title3.bold())
+                    .font(.xbTitle3.bold())
                     .foregroundStyle(.white)
                 Text(deviceCode == nil
                      ? "采用微软官方 OAuth2 设备码流程，密码仅在微软官网输入。"
                      : "已自动复制验证码，打开微软授权页粘贴即可完成绑定。")
-                    .font(.footnote)
+                    .font(.xbFootnote)
                     .foregroundStyle(.secondary)
             }
 
@@ -159,7 +159,7 @@ struct LoginView: View {
                 VStack(spacing: 16) {
                     VStack(spacing: 8) {
                         Text("授权验证码")
-                            .font(.caption.weight(.semibold))
+                            .font(.xbCaption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
                         Button {
@@ -172,7 +172,7 @@ struct LoginView: View {
                                     .tracking(5)
                                     .foregroundStyle(XboxTheme.emeraldBright)
                                 Image(systemName: copiedCode ? "checkmark.circle.fill" : "doc.on.doc")
-                                    .font(.title3)
+                                    .font(.xbTitle3)
                                     .foregroundStyle(copiedCode ? XboxTheme.emeraldBright : .secondary)
                             }
                             .frame(maxWidth: .infinity)
@@ -214,7 +214,7 @@ struct LoginView: View {
                             .controlSize(.small)
                             .tint(XboxTheme.emerald)
                         Text(statusText.isEmpty ? "等待浏览器完成微软账号授权..." : statusText)
-                            .font(.footnote)
+                            .font(.xbFootnote)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -228,7 +228,7 @@ struct LoginView: View {
                                 Image(systemName: "wave.3.right.circle.fill")
                                     .foregroundStyle(XboxTheme.emeraldBright)
                                 Text("发现附近已登录设备 · 一键同步")
-                                    .font(.caption.weight(.bold))
+                                    .font(.xbCaption.weight(.bold))
                                     .foregroundStyle(XboxTheme.emeraldBright)
                             }
 
@@ -238,15 +238,15 @@ struct LoginView: View {
                                 } label: {
                                     HStack(spacing: 10) {
                                         Image(systemName: "laptopcomputer.and.ipad")
-                                            .font(.subheadline.weight(.semibold))
+                                            .font(.xbSubheadline.weight(.semibold))
                                             .foregroundStyle(XboxTheme.emeraldBright)
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(peer.deviceName)
-                                                .font(.subheadline.weight(.semibold))
+                                                .font(.xbSubheadline.weight(.semibold))
                                                 .foregroundStyle(.white)
                                             if !peer.gamertag.isEmpty {
                                                 Text(peer.gamertag)
-                                                    .font(.caption2)
+                                                    .font(.xbCaption2)
                                                     .foregroundStyle(.secondary)
                                             }
                                         }
@@ -255,7 +255,7 @@ struct LoginView: View {
                                             ProgressView().controlSize(.small)
                                         } else {
                                             Text("同步登录")
-                                                .font(.caption.bold())
+                                                .font(.xbCaption.bold())
                                                 .foregroundStyle(.black)
                                                 .padding(.horizontal, 10)
                                                 .padding(.vertical, 5)
@@ -277,7 +277,7 @@ struct LoginView: View {
                                 HStack(spacing: 8) {
                                     ProgressView().controlSize(.small).tint(XboxTheme.emeraldBright)
                                     Text("请在对方设备确认核对码：\(code)")
-                                        .font(.caption.monospacedDigit().weight(.semibold))
+                                        .font(.xbCaption.monospacedDigit().weight(.semibold))
                                         .foregroundStyle(XboxTheme.emeraldBright)
                                 }
                             }
@@ -340,9 +340,9 @@ struct LoginView: View {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(XboxTheme.warning)
-                        .font(.footnote)
+                        .font(.xbFootnote)
                     Text(errorText)
-                        .font(.footnote)
+                        .font(.xbFootnote)
                         .foregroundStyle(XboxTheme.warning)
                         .multilineTextAlignment(.leading)
                 }
@@ -360,10 +360,10 @@ struct LoginView: View {
             HStack {
                 HStack(spacing: 8) {
                     Image(systemName: "globe")
-                        .font(.footnote)
+                        .font(.xbFootnote)
                         .foregroundStyle(.secondary)
                     Text("xCloud 跨区 IP（可选）")
-                        .font(.footnote)
+                        .font(.xbFootnote)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -378,9 +378,9 @@ struct LoginView: View {
                     HStack(spacing: 4) {
                         Text(label)
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption2)
+                            .font(.xbCaption2)
                     }
-                    .font(.footnote.weight(.semibold))
+                    .font(.xbFootnote.weight(.semibold))
                     .foregroundStyle(XboxTheme.emeraldBright)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)

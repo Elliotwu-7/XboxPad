@@ -14,7 +14,7 @@ struct HomeConsolesView: View {
 
     private var columns: [GridItem] {
         if isRegularLayout {
-            return [GridItem(.adaptive(minimum: 330, maximum: 460), spacing: 18)]
+            return [GridItem(.adaptive(minimum: XboxPlatform.isMac ? 380 : 330, maximum: 500), spacing: 18)]
         }
         return [GridItem(.flexible(), spacing: 16)]
     }
@@ -126,7 +126,7 @@ struct HomeConsolesView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
                         Text(headerDeviceTitle(t))
-                            .font(.headline)
+                            .font(.xbHeadline)
                             .foregroundStyle(.white)
                             .lineLimit(1)
 
@@ -141,16 +141,16 @@ struct HomeConsolesView: View {
 
                     if !t.connected {
                         Text("蓝牙配对或 USB-C 直连手柄 / 键鼠")
-                            .font(.caption)
+                            .font(.xbCaption)
                             .foregroundStyle(.secondary)
                     } else if t.controllers.count == 1, let c = primary {
                         HStack(spacing: 8) {
                             Text(c.supportsTriggerRumble ? "四马达震动" : (c.supportsHandleRumble ? "双握把震动" : "标准输入"))
-                                .font(.caption)
+                                .font(.xbCaption)
                                 .foregroundStyle(.secondary)
                             if let pct = c.batteryPercent {
                                 Label("\(pct)%", systemImage: c.isCharging ? "battery.100.bolt" : "battery.75")
-                                    .font(.caption.monospacedDigit())
+                                    .font(.xbCaption.monospacedDigit())
                                     .foregroundStyle(pct <= 20 && !c.isCharging ? XboxTheme.warning : .secondary)
                             }
                         }
@@ -170,17 +170,17 @@ struct HomeConsolesView: View {
                         ForEach(t.controllers) { c in
                             HStack(spacing: 5) {
                                 Text("P\(c.playerIndex + 1)")
-                                    .font(.caption2.bold())
+                                    .font(.xbCaption2.bold())
                                     .foregroundStyle(.black)
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 2)
                                     .background(XboxTheme.emeraldBright, in: Capsule())
                                 Text(c.shortModelName)
-                                    .font(.caption.weight(.medium))
+                                    .font(.xbCaption.weight(.medium))
                                     .foregroundStyle(.white)
                                 if let pct = c.batteryPercent {
                                     Text("\(pct)%")
-                                        .font(.caption2.monospacedDigit())
+                                        .font(.xbCaption2.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -233,7 +233,7 @@ struct HomeConsolesView: View {
             Image(systemName: "person.crop.circle.fill")
                 .foregroundStyle(XboxTheme.emeraldBright)
             Text(appState.gamertag)
-                .font(.caption.weight(.semibold))
+                .font(.xbCaption.weight(.semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
         }
@@ -246,10 +246,10 @@ struct HomeConsolesView: View {
     private func quickSpecChip(icon: String, text: String, tint: Color = .white.opacity(0.75)) -> some View {
         HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(.caption2)
+                .font(.xbCaption2)
                 .foregroundStyle(tint)
             Text(text)
-                .font(.caption.weight(.medium))
+                .font(.xbCaption.weight(.medium))
                 .foregroundStyle(.white.opacity(0.86))
         }
         .padding(.horizontal, 10)
@@ -261,12 +261,12 @@ struct HomeConsolesView: View {
     private func sectionHeader(title: String, subtitle: String?) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
-                .font(.title3.bold())
+                .font(.xbTitle3.bold())
                 .foregroundStyle(.white)
             Spacer()
             if let subtitle {
                 Text(subtitle)
-                    .font(.caption.weight(.medium))
+                    .font(.xbCaption.weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }
@@ -279,11 +279,11 @@ struct HomeConsolesView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text("发现 XboxPad 新版本 v\(update.version)")
-                        .font(.subheadline.bold())
+                        .font(.xbSubheadline.bold())
                         .foregroundStyle(.white)
                     if !update.buildVersion.isEmpty {
                         Text("Build \(update.buildVersion)")
-                            .font(.caption2.monospacedDigit().weight(.semibold))
+                            .font(.xbCaption2.monospacedDigit().weight(.semibold))
                             .foregroundStyle(XboxTheme.emeraldBright)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -291,7 +291,7 @@ struct HomeConsolesView: View {
                     }
                 }
                 Text(update.changelog)
-                    .font(.caption)
+                    .font(.xbCaption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -302,7 +302,7 @@ struct HomeConsolesView: View {
                         .frame(width: 68)
                         .tint(XboxTheme.emeraldBright)
                     Text("\(Int((appState.updateChecker.downloadProgress * 100).rounded()))%")
-                        .font(.caption2.monospacedDigit().bold())
+                        .font(.xbCaption2.monospacedDigit().bold())
                         .foregroundStyle(XboxTheme.emeraldBright)
                 }
             } else {
@@ -310,7 +310,7 @@ struct HomeConsolesView: View {
                     appState.updateChecker.openUpdateDownload()
                 } label: {
                     Text(XboxPlatform.isMac ? "一键下载更新" : "前往更新")
-                        .font(.caption.bold())
+                        .font(.xbCaption.bold())
                         .foregroundStyle(.black)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
@@ -345,11 +345,11 @@ struct HomeConsolesView: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(console.deviceName)
-                        .font(.title3.bold())
+                        .font(.xbTitle3.bold())
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(console.friendlyConsoleType)
-                        .font(.subheadline)
+                        .font(.xbSubheadline)
                         .foregroundStyle(.secondary)
                 }
 
@@ -394,7 +394,7 @@ struct HomeConsolesView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.headline)
+                        .font(.xbHeadline)
                         .foregroundStyle(.white)
                         .frame(width: 48, height: 46)
                         .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -425,7 +425,7 @@ struct HomeConsolesView: View {
                 .controlSize(.large)
                 .tint(XboxTheme.emerald)
             Text("正在扫描主机...")
-                .font(.subheadline.weight(.medium))
+                .font(.xbSubheadline.weight(.medium))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 190)
@@ -436,10 +436,10 @@ struct HomeConsolesView: View {
         VStack(spacing: 12) {
             XboxIconBadge(systemName: "exclamationmark.triangle.fill", color: XboxTheme.warning, size: 48)
             Text("获取主机列表失败")
-                .font(.headline)
+                .font(.xbHeadline)
                 .foregroundStyle(.white)
             Text(message)
-                .font(.footnote)
+                .font(.xbFootnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
@@ -457,10 +457,10 @@ struct HomeConsolesView: View {
         VStack(spacing: 12) {
             XboxIconBadge(systemName: "xbox.logo", color: .secondary, size: 50)
             Text("未发现可串流主机")
-                .font(.headline)
+                .font(.xbHeadline)
                 .foregroundStyle(.white)
             Text("请在 Xbox 设置 → 远程功能 中开启远程游玩并将电源设为睡眠。")
-                .font(.footnote)
+                .font(.xbFootnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 400)
@@ -477,14 +477,14 @@ struct HomeConsolesView: View {
     private var minimalFooterTip: some View {
         HStack(spacing: 6) {
             Image(systemName: "hand.tap")
-                .font(.caption2)
+                .font(.xbCaption2)
                 .foregroundStyle(XboxTheme.emeraldBright.opacity(0.8))
             Text(
                 gamepadManager.telemetry.connected
                     ? "手柄直控：方向键选择主机 · A 开始串流 · LB/RB 切换页签"
                     : "串流时轻触屏幕顶部或长按 View + Menu 呼出控制栏"
             )
-                .font(.caption)
+                .font(.xbCaption)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .center)

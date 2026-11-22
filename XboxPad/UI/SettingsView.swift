@@ -74,9 +74,9 @@ struct SettingsView: View {
                             aboutCard
                         }
                     }
-                    .frame(maxWidth: 780)
+                    .frame(maxWidth: XboxPlatform.isMac ? 880 : 780)
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 18)
+                    .padding(.horizontal, XboxPlatform.isMac ? 26 : 18)
                     .padding(.top, 4)
                     .padding(.bottom, 34)
                 }
@@ -110,7 +110,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text("设置与手柄")
-                        .font(.system(size: XboxPlatform.isPhone ? 22 : 26, weight: .bold, design: .rounded))
+                        .font(.system(size: XboxPlatform.isMac ? 30 : (XboxPlatform.isPhone ? 22 : 26), weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                     if isInStreamModal {
                         XboxStatusPill(text: "实时生效", color: XboxTheme.emerald, pulse: true)
@@ -118,7 +118,7 @@ struct SettingsView: View {
                 }
                 if isInStreamModal {
                     Text("串流保持运行，画质、震动、摇杆与键鼠调节立即生效")
-                        .font(.caption)
+                        .font(.xbCaption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -131,9 +131,9 @@ struct SettingsView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark")
-                            .font(.caption.bold())
+                            .font(.xbCaption.bold())
                         Text("返回画面")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.xbSubheadline.weight(.semibold))
                     }
                     .foregroundStyle(.black)
                     .padding(.horizontal, 15)
@@ -143,9 +143,9 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
             }
         }
-        .frame(maxWidth: 780)
+        .frame(maxWidth: XboxPlatform.isMac ? 880 : 780)
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 18)
+        .padding(.horizontal, XboxPlatform.isMac ? 26 : 18)
         .padding(.top, isInStreamModal ? 16 : (XboxPlatform.isMac ? 18 : 12))
         .padding(.bottom, 12)
     }
@@ -166,9 +166,9 @@ struct SettingsView: View {
                     } label: {
                         HStack(spacing: 7) {
                             Image(systemName: cat.icon)
-                                .font(.caption.weight(.semibold))
+                                .font(.xbCaption.weight(.semibold))
                             Text(cat.rawValue)
-                                .font(.subheadline.weight(active ? .bold : .medium))
+                                .font(.xbSubheadline.weight(active ? .bold : .medium))
                         }
                         .foregroundStyle(active ? .black : .white.opacity(0.84))
                         .padding(.horizontal, 14)
@@ -191,7 +191,7 @@ struct SettingsView: View {
             }
             .padding(.vertical, 2)
         }
-        .frame(maxWidth: 780)
+        .frame(maxWidth: XboxPlatform.isMac ? 880 : 780)
         .frame(maxWidth: .infinity)
     }
 
@@ -205,10 +205,10 @@ struct SettingsView: View {
                     XboxIconBadge(systemName: "gamecontroller", color: .secondary, size: 40)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("未检测到手柄")
-                            .font(.headline)
+                            .font(.xbHeadline)
                             .foregroundStyle(.white)
                         Text("支持同时接入 1–4 只手柄（Xbox / Elite 2 / PS5 DualSense / Switch Pro 等）")
-                            .font(.caption)
+                            .font(.xbCaption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -230,29 +230,29 @@ struct SettingsView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(spacing: 6) {
                                         Text("P\(info.playerIndex + 1)")
-                                            .font(.caption2.bold())
+                                            .font(.xbCaption2.bold())
                                             .foregroundStyle(.black)
                                             .padding(.horizontal, 7)
                                             .padding(.vertical, 2)
                                             .background(isSelected ? XboxTheme.emeraldBright : Color.white.opacity(0.78), in: Capsule())
                                         Text(info.modelName)
-                                            .font(.subheadline.weight(.bold))
+                                            .font(.xbSubheadline.weight(.bold))
                                             .foregroundStyle(.white)
                                             .lineLimit(1)
                                     }
 
                                     HStack(spacing: 10) {
                                         Text(info.supportsTriggerRumble ? "四马达震动" : (info.supportsHandleRumble ? "双握把震动" : "无震动马达"))
-                                            .font(.caption)
+                                            .font(.xbCaption)
                                             .foregroundStyle(.secondary)
                                         if info.supportsGyro {
                                             Text("含陀螺仪")
-                                                .font(.caption)
+                                                .font(.xbCaption)
                                                 .foregroundStyle(.cyan)
                                         }
                                         if let pct = info.batteryPercent {
                                             Label("\(pct)%", systemImage: info.isCharging ? "battery.100.bolt" : "battery.75")
-                                                .font(.caption.monospacedDigit())
+                                                .font(.xbCaption.monospacedDigit())
                                                 .foregroundStyle(pct <= 20 && !info.isCharging ? XboxTheme.warning : .secondary)
                                         }
                                     }
@@ -264,7 +264,7 @@ struct SettingsView: View {
                                     XboxStatusPill(text: "测试中", color: XboxTheme.emerald, pulse: true)
                                 } else {
                                     Text("切换测试")
-                                        .font(.caption.weight(.semibold))
+                                        .font(.xbCaption.weight(.semibold))
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -289,13 +289,13 @@ struct SettingsView: View {
                     XboxIconBadge(systemName: "keyboard", color: XboxTheme.info, size: 34)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("已识别外接键盘 / 鼠标")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.xbSubheadline.weight(.semibold))
                             .foregroundStyle(.white)
                         Text([
                             t.keyboardConnected ? "键盘：\(t.keyboardName)" : nil,
                             t.mouseConnected ? "鼠标：\(t.mouseName)" : nil,
                         ].compactMap { $0 }.joined(separator: "  ·  "))
-                            .font(.caption)
+                            .font(.xbCaption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -322,19 +322,19 @@ struct SettingsView: View {
 
             HStack(alignment: .center, spacing: 10) {
                 Text("当前按下")
-                    .font(.caption.weight(.semibold))
+                    .font(.xbCaption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
                 if t.activeButtons.isEmpty {
                     Text("按下手柄任意按键测试响应")
-                        .font(.caption)
+                        .font(.xbCaption)
                         .foregroundStyle(.tertiary)
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
                             ForEach(t.activeButtons, id: \.self) { btn in
                                 Text(btn)
-                                    .font(.caption.monospaced().bold())
+                                    .font(.xbCaption.monospaced().bold())
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 4)
@@ -351,7 +351,7 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("点击测试独立震动马达")
-                    .font(.caption.weight(.semibold))
+                    .font(.xbCaption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
                 LazyVGrid(
@@ -367,9 +367,9 @@ struct SettingsView: View {
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "waveform.path")
-                                    .font(.caption.bold())
+                                    .font(.xbCaption.bold())
                                 Text(motor.rawValue)
-                                    .font(.caption.weight(.semibold))
+                                    .font(.xbCaption.weight(.semibold))
                                     .lineLimit(1)
                             }
                             .foregroundStyle(XboxTheme.emeraldBright)
@@ -439,7 +439,7 @@ struct SettingsView: View {
         ) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("快速游戏预设档案")
-                    .font(.caption.weight(.semibold))
+                    .font(.xbCaption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -449,7 +449,7 @@ struct SettingsView: View {
                                 appState.applyControlProfile(preset)
                             } label: {
                                 Text(preset.label)
-                                    .font(.caption.weight(.semibold))
+                                    .font(.xbCaption.weight(.semibold))
                                     .foregroundStyle(active ? .black : .white.opacity(0.88))
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
@@ -483,17 +483,17 @@ struct SettingsView: View {
             cardDivider
             HStack(spacing: 12) {
                 Toggle("反转左摇杆 Y", isOn: $appState.settings.gamepadButtonMap.invertLeftY)
-                    .font(.caption.weight(.medium))
+                    .font(.xbCaption.weight(.medium))
                     .tint(XboxTheme.emerald)
                 Toggle("反转右摇杆 Y", isOn: $appState.settings.gamepadButtonMap.invertRightY)
-                    .font(.caption.weight(.medium))
+                    .font(.xbCaption.weight(.medium))
                     .tint(XboxTheme.emerald)
             }
 
             cardDivider
             VStack(alignment: .leading, spacing: 8) {
                 Text("Xbox Elite 背键映射 (P1 – P4)")
-                    .font(.caption.weight(.semibold))
+                    .font(.xbCaption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 8) {
                     paddlePickerChip("P1 背键", selection: $appState.settings.gamepadButtonMap.paddle1)
@@ -508,13 +508,13 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("键鼠模拟自定义键位（WASD 固定移动）")
-                            .font(.caption.weight(.semibold))
+                            .font(.xbCaption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("重置键位") {
                             appState.settings.keyboardBindingMap = KeyboardBindingMap()
                         }
-                        .font(.caption2.weight(.semibold))
+                        .font(.xbCaption2.weight(.semibold))
                         .foregroundStyle(XboxTheme.emeraldBright)
                         .buttonStyle(.plain)
                     }
@@ -538,7 +538,7 @@ struct SettingsView: View {
     private func paddlePickerChip(_ title: String, selection: Binding<PaddleAction>) -> some View {
         HStack {
             Text(title)
-                .font(.caption.weight(.medium))
+                .font(.xbCaption.weight(.medium))
                 .foregroundStyle(.white.opacity(0.85))
             Spacer()
             Menu {
@@ -547,7 +547,7 @@ struct SettingsView: View {
                 }
             } label: {
                 Text(selection.wrappedValue.label)
-                    .font(.caption.weight(.semibold))
+                    .font(.xbCaption.weight(.semibold))
                     .foregroundStyle(XboxTheme.emeraldBright)
                     .lineLimit(1)
             }
@@ -564,7 +564,7 @@ struct SettingsView: View {
     private func keyBindChip(_ title: String, keyName: Binding<String>) -> some View {
         HStack {
             Text(title)
-                .font(.caption.weight(.medium))
+                .font(.xbCaption.weight(.medium))
                 .foregroundStyle(.white.opacity(0.82))
             Spacer()
             Menu {
@@ -573,7 +573,7 @@ struct SettingsView: View {
                 }
             } label: {
                 Text(keyName.wrappedValue)
-                    .font(.caption.monospaced().bold())
+                    .font(.xbCaption.monospaced().bold())
                     .foregroundStyle(XboxTheme.info)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
@@ -696,7 +696,7 @@ struct SettingsView: View {
 
                 if appState.settings.keyboardMouseMode == .gamepadEmulation {
                     Text("模拟键位：WASD 移动 · 鼠标转视角 · 左/右键 RT/LT · 空格 A · C/Ctrl B · R X · E/F Y · Q/G LB/RB · Shift 冲刺 · Tab View · Esc Menu · F12 西瓜键")
-                        .font(.caption)
+                        .font(.xbCaption)
                         .foregroundStyle(.secondary)
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -794,7 +794,7 @@ struct SettingsView: View {
                     appState.showToast("已恢复默认虚拟手柄按键排版")
                 } label: {
                     Text("重置自定义虚拟按键排版")
-                        .font(.caption.weight(.semibold))
+                        .font(.xbCaption.weight(.semibold))
                         .foregroundStyle(.orange)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -811,11 +811,11 @@ struct SettingsView: View {
                 HStack(spacing: 10) {
                     XboxIconBadge(systemName: "xbox.logo", color: XboxTheme.emeraldBright, size: 30)
                     Text(XboxPlatform.isMac ? "打开系统游戏手柄设置" : "配置物理西瓜键覆盖（关闭 Apple Games）")
-                        .font(.subheadline.weight(.medium))
+                        .font(.xbSubheadline.weight(.medium))
                         .foregroundStyle(.white)
                     Spacer()
                     Image(systemName: "arrow.up.forward.app")
-                        .font(.caption.weight(.semibold))
+                        .font(.xbCaption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
                 .contentShape(Rectangle())
@@ -851,19 +851,19 @@ struct SettingsView: View {
                     XboxIconBadge(systemName: "speedometer", color: .cyan, size: 30)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("视频码率上限（支持自定义）")
-                            .font(.subheadline.weight(.medium))
+                            .font(.xbSubheadline.weight(.medium))
                             .foregroundStyle(.white)
                         Text(
                             appState.settings.customMaxBitrateMbps == 0
                                 ? "自动模式（最高 40 Mbps · 内网自动拉满，弱网自适应）"
                                 : "自定义上限 \(appState.settings.customMaxBitrateMbps) Mbps（起播约 \(max(2, appState.settings.customMaxBitrateMbps * 7 / 10))M · 下次重连生效）"
                         )
-                        .font(.caption)
+                        .font(.xbCaption)
                         .foregroundStyle(.secondary)
                     }
                     Spacer()
                     Text(appState.settings.customMaxBitrateMbps == 0 ? "自动" : "\(appState.settings.customMaxBitrateMbps)M")
-                        .font(.subheadline.monospacedDigit().bold())
+                        .font(.xbSubheadline.monospacedDigit().bold())
                         .foregroundStyle(.cyan)
                 }
 
@@ -875,7 +875,7 @@ struct SettingsView: View {
                                 appState.settings.customMaxBitrateMbps = mbps
                             } label: {
                                 Text(mbps == 0 ? "自动" : "\(mbps)M")
-                                    .font(.caption.monospacedDigit().weight(.semibold))
+                                    .font(.xbCaption.monospacedDigit().weight(.semibold))
                                     .foregroundStyle(selected ? .black : .white.opacity(0.85))
                                     .padding(.horizontal, 11)
                                     .padding(.vertical, 5)
@@ -891,7 +891,7 @@ struct SettingsView: View {
 
                 HStack(spacing: 10) {
                     Text("精细调节")
-                        .font(.caption)
+                        .font(.xbCaption)
                         .foregroundStyle(.secondary)
                     Slider(
                         value: Binding(
@@ -903,7 +903,7 @@ struct SettingsView: View {
                     )
                     .tint(.cyan)
                     Text("4–60M")
-                        .font(.caption2.monospacedDigit())
+                        .font(.xbCaption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1101,7 +1101,7 @@ struct SettingsView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.counterclockwise")
                         Text("恢复默认画面调色")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.xbSubheadline.weight(.semibold))
                     }
                     .foregroundStyle(XboxTheme.emeraldBright)
                     .frame(maxWidth: .infinity)
@@ -1190,10 +1190,10 @@ struct SettingsView: View {
                 XboxIconBadge(systemName: "waveform.path.ecg.rectangle.fill", color: .cyan, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(diag.isRunning ? "正在进行 UDP STUN 与网关测速..." : "检测当前网络串流条件")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.xbSubheadline.weight(.semibold))
                         .foregroundStyle(.white)
                     Text(diag.report == nil ? "点击右侧按钮立即检测 NAT 类型与最优节点" : diag.report!.natTypeDescription)
-                        .font(.caption)
+                        .font(.xbCaption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -1209,7 +1209,7 @@ struct SettingsView: View {
                             .background(Color.cyan, in: Capsule())
                     } else {
                         Text(diag.report == nil ? "开始体检" : "重新检测")
-                            .font(.caption.bold())
+                            .font(.xbCaption.bold())
                             .foregroundStyle(.black)
                             .padding(.horizontal, 13)
                             .padding(.vertical, 7)
@@ -1242,7 +1242,7 @@ struct SettingsView: View {
                 }
 
                 Text(report.recommendationSummary)
-                    .font(.caption)
+                    .font(.xbCaption)
                     .foregroundStyle(.white.opacity(0.88))
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1257,7 +1257,7 @@ struct SettingsView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "wand.and.stars")
                         Text("一键应用推荐配置（\(report.recommendedBitrateMbps == 0 ? "自动40M" : "\(report.recommendedBitrateMbps)M") · \(report.recommendedLatencyProfile.rawValue)ms）")
-                            .font(.caption.bold())
+                            .font(.xbCaption.bold())
                     }
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity)
@@ -1275,10 +1275,10 @@ struct SettingsView: View {
                 .fill(good ? XboxTheme.emeraldBright : XboxTheme.warning)
                 .frame(width: 6, height: 6)
             Text(title)
-                .font(.caption2)
+                .font(.xbCaption2)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.caption2.monospacedDigit().bold())
+                .font(.xbCaption2.monospacedDigit().bold())
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 9)
@@ -1341,7 +1341,7 @@ struct SettingsView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.clockwise.circle.fill")
                     Text("应用区域修改并重新获取凭证")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.xbSubheadline.weight(.semibold))
                 }
                 .foregroundStyle(XboxTheme.emeraldBright)
                 .frame(maxWidth: .infinity)
@@ -1392,11 +1392,11 @@ struct SettingsView: View {
                     HStack(spacing: 10) {
                         XboxIconBadge(systemName: "server.rack", color: XboxTheme.info, size: 30)
                         Text(NanoStreamSession.hasBuiltInRelayCluster ? "覆盖自定义 STUN / TURN 服务器（可选）" : "自定义 STUN / TURN 中继服务器（可选）")
-                            .font(.subheadline.weight(.medium))
+                            .font(.xbSubheadline.weight(.medium))
                             .foregroundStyle(.white)
                         Spacer()
                         Image(systemName: showCustomIceEditor ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.semibold))
+                            .font(.xbCaption.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
                     .contentShape(Rectangle())
@@ -1421,7 +1421,7 @@ struct SettingsView: View {
                         }
                         if !NanoStreamSession.hasBuiltInRelayCluster {
                             Text("当前为纯净开源构建，不含内置私有中继服务器。局域网与常规公网默认直连/公开 STUN 打洞；严格 NAT 环境可在此填写自建 coturn / TURN 服务器。")
-                                .font(.caption)
+                                .font(.xbCaption)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -1445,11 +1445,11 @@ struct SettingsView: View {
                 HStack(spacing: 10) {
                     XboxIconBadge(systemName: "person.crop.circle.fill", color: XboxTheme.emerald, size: 30)
                     Text("当前 Xbox 账号")
-                        .font(.subheadline.weight(.medium))
+                        .font(.xbSubheadline.weight(.medium))
                         .foregroundStyle(.white)
                     Spacer()
                     Text(appState.gamertag)
-                        .font(.subheadline.weight(.bold))
+                        .font(.xbSubheadline.weight(.bold))
                         .foregroundStyle(XboxTheme.emeraldBright)
                 }
                 cardDivider
@@ -1459,10 +1459,10 @@ struct SettingsView: View {
                 XboxIconBadge(systemName: "wave.3.right.circle.fill", color: XboxTheme.emerald, size: 30)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("局域网近场加密同步")
-                        .font(.subheadline.weight(.medium))
+                        .font(.xbSubheadline.weight(.medium))
                         .foregroundStyle(.white)
                     Text("ECDH + AES-GCM 端到端加密，需核对 6 位码")
-                        .font(.caption)
+                        .font(.xbCaption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -1480,7 +1480,7 @@ struct SettingsView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "doc.on.clipboard.fill")
                     Text("复制登录凭证（通用剪贴板同步到其他设备）")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.xbSubheadline.weight(.semibold))
                 }
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
@@ -1512,11 +1512,11 @@ struct SettingsView: View {
             HStack(spacing: 10) {
                 XboxIconBadge(systemName: "info.circle.fill", color: .secondary, size: 30)
                 Text("当前版本")
-                    .font(.subheadline.weight(.medium))
+                    .font(.xbSubheadline.weight(.medium))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("XboxPad \(XboxTheme.appVersionDisplay)")
-                    .font(.subheadline.monospacedDigit())
+                    .font(.xbSubheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
 
@@ -1532,11 +1532,11 @@ struct SettingsView: View {
                         appState.updateChecker.availableUpdate.map { "发现新版本 v\($0.version)" }
                             ?? "软件更新检测"
                     )
-                    .font(.subheadline.weight(.medium))
+                    .font(.xbSubheadline.weight(.medium))
                     .foregroundStyle(.white)
                     if !appState.updateChecker.lastStatusText.isEmpty {
                         Text(appState.updateChecker.lastStatusText)
-                            .font(.caption)
+                            .font(.xbCaption)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -1551,7 +1551,7 @@ struct SettingsView: View {
                             .frame(width: 72)
                             .tint(XboxTheme.emeraldBright)
                         Text("\(Int((appState.updateChecker.downloadProgress * 100).rounded()))%")
-                            .font(.caption2.monospacedDigit().bold())
+                            .font(.xbCaption2.monospacedDigit().bold())
                             .foregroundStyle(XboxTheme.emeraldBright)
                     }
                 } else if appState.updateChecker.availableUpdate != nil {
@@ -1559,7 +1559,7 @@ struct SettingsView: View {
                         appState.updateChecker.openUpdateDownload()
                     } label: {
                         Text(XboxPlatform.isMac ? "一键下载更新" : "前往更新")
-                            .font(.caption.bold())
+                            .font(.xbCaption.bold())
                             .foregroundStyle(.black)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
@@ -1571,7 +1571,7 @@ struct SettingsView: View {
                         Task { await appState.updateChecker.checkForUpdates(silent: false) }
                     } label: {
                         Text("检查更新")
-                            .font(.caption.weight(.semibold))
+                            .font(.xbCaption.weight(.semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 6)
@@ -1590,7 +1590,7 @@ struct SettingsView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
                         Text("退出微软账号")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.xbSubheadline.weight(.semibold))
                     }
                     .foregroundStyle(XboxTheme.danger)
                     .frame(maxWidth: .infinity)
@@ -1618,24 +1618,24 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 7) {
                 Image(systemName: icon)
-                    .font(.caption.bold())
+                    .font(.xbCaption.bold())
                     .foregroundStyle(tint)
                 Text(title)
-                    .font(.caption.weight(.bold))
+                    .font(.xbCaption.weight(.bold))
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 4)
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: XboxPlatform.isMac ? 14 : 12) {
                 content()
             }
-            .padding(16)
+            .padding(XboxPlatform.isMac ? 20 : 16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .xboxCard(cornerRadius: 18)
 
             if let footer {
                 Text(footer)
-                    .font(.caption)
+                    .font(.xbCaption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
             }
@@ -1662,11 +1662,11 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 7) {
                     Text(title)
-                        .font(.subheadline.weight(.medium))
+                        .font(.xbSubheadline.weight(.medium))
                         .foregroundStyle(.white)
                     if let badge {
                         Text(badge)
-                            .font(.caption2.weight(.semibold))
+                            .font(.xbCaption2.weight(.semibold))
                             .foregroundStyle(badgeColor)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
@@ -1675,7 +1675,7 @@ struct SettingsView: View {
                 }
                 if let subtitle {
                     Text(subtitle)
-                        .font(.caption)
+                        .font(.xbCaption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1701,11 +1701,11 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 7) {
                     Text(title)
-                        .font(.subheadline.weight(.medium))
+                        .font(.xbSubheadline.weight(.medium))
                         .foregroundStyle(.white)
                     if let badge {
                         Text(badge)
-                            .font(.caption2.weight(.semibold))
+                            .font(.xbCaption2.weight(.semibold))
                             .foregroundStyle(badgeColor)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
@@ -1714,7 +1714,7 @@ struct SettingsView: View {
                 }
                 if let subtitle {
                     Text(subtitle)
-                        .font(.caption)
+                        .font(.xbCaption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1724,10 +1724,10 @@ struct SettingsView: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(currentLabel)
-                        .font(.caption.weight(.semibold))
+                        .font(.xbCaption.weight(.semibold))
                         .lineLimit(1)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
+                        .font(.xbCaption2)
                         .foregroundStyle(.secondary)
                 }
                 .foregroundStyle(.white)
@@ -1757,11 +1757,11 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Text(title)
-                    .font(.subheadline.weight(.medium))
+                    .font(.xbSubheadline.weight(.medium))
                     .foregroundStyle(.white)
                 Spacer()
                 Text(valueText)
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                    .font(.xbSubheadline.monospacedDigit().weight(.semibold))
                     .foregroundStyle(tint)
             }
             Slider(value: value, in: range, step: step)
@@ -1774,7 +1774,7 @@ struct SettingsView: View {
             .textFieldStyle(.plain)
             .xboxNoAutocapitalization()
             .autocorrectionDisabled()
-            .font(.subheadline)
+            .font(.xbSubheadline)
             .foregroundStyle(.white)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -1788,7 +1788,7 @@ struct SettingsView: View {
     private func styledSecureField(placeholder: String, text: Binding<String>) -> some View {
         SecureField(placeholder, text: text)
             .textFieldStyle(.plain)
-            .font(.subheadline)
+            .font(.xbSubheadline)
             .foregroundStyle(.white)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -1821,7 +1821,7 @@ struct SettingsView: View {
                     .offset(x: CGFloat(x) * 24, y: CGFloat(-y) * 24)
             }
             Text(title)
-                .font(.caption2.weight(.medium))
+                .font(.xbCaption2.weight(.medium))
                 .foregroundStyle(.secondary)
         }
     }
@@ -1830,11 +1830,11 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(label)
-                    .font(.caption.bold())
+                    .font(.xbCaption.bold())
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(Int(value * 100))%")
-                    .font(.caption.monospacedDigit())
+                    .font(.xbCaption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             GeometryReader { geo in

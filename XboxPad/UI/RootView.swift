@@ -62,10 +62,10 @@ struct RootView: View {
             if let toast = appState.toastMessage {
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.xbSubheadline.weight(.semibold))
                         .foregroundStyle(XboxTheme.emeraldBright)
                     Text(toast)
-                        .font(.subheadline.weight(.medium))
+                        .font(.xbSubheadline.weight(.medium))
                         .foregroundStyle(.white)
                 }
                 .padding(.horizontal, 18)
@@ -170,7 +170,7 @@ struct RootView: View {
                             .controlSize(.small)
                             .tint(XboxTheme.emerald)
                         Text("正在恢复 Xbox 登录状态...")
-                            .font(.subheadline)
+                            .font(.xbSubheadline)
                             .foregroundStyle(.secondary)
                     }
                 }

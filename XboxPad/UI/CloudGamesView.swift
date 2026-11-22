@@ -21,7 +21,7 @@ struct CloudGamesView: View {
 
     private var columns: [GridItem] {
         if isRegularLayout {
-            return [GridItem(.adaptive(minimum: 185, maximum: 230), spacing: 16)]
+            return [GridItem(.adaptive(minimum: XboxPlatform.isMac ? 210 : 185, maximum: 260), spacing: 16)]
         }
         return [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 14)]
     }
@@ -86,7 +86,7 @@ struct CloudGamesView: View {
                                 .controlSize(.large)
                                 .tint(XboxTheme.emerald)
                             Text("正在拉取 Xbox Cloud Gaming 游戏库...")
-                                .font(.subheadline.weight(.medium))
+                                .font(.xbSubheadline.weight(.medium))
                                 .foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -227,10 +227,10 @@ struct CloudGamesView: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "globe")
-                        .font(.caption2)
+                        .font(.xbCaption2)
                         .foregroundStyle(XboxTheme.info)
                     Text(activeRegionLabel)
-                        .font(.caption.weight(.medium))
+                        .font(.xbCaption.weight(.medium))
                         .foregroundStyle(.white.opacity(0.9))
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
@@ -251,9 +251,9 @@ struct CloudGamesView: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.xbSubheadline.weight(.semibold))
                 Text("\(count)")
-                    .font(.caption2.monospacedDigit().weight(.bold))
+                    .font(.xbCaption2.monospacedDigit().weight(.bold))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(selected ? Color.black.opacity(0.25) : Color.white.opacity(0.10), in: Capsule())
@@ -314,7 +314,7 @@ struct CloudGamesView: View {
                                 Image(systemName: "clock.fill")
                                     .font(.system(size: 9))
                                 Text("最近")
-                                    .font(.caption2.bold())
+                                    .font(.xbCaption2.bold())
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 8)
@@ -327,20 +327,20 @@ struct CloudGamesView: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(game.title)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.xbSubheadline.weight(.semibold))
                             .foregroundStyle(.white)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
-                            .frame(minHeight: 36, alignment: .topLeading)
+                            .frame(minHeight: XboxPlatform.isMac ? 44 : 36, alignment: .topLeading)
 
                         HStack {
                             Text(game.publisher.isEmpty ? "Xbox Cloud Gaming" : game.publisher)
-                                .font(.caption2)
+                                .font(.xbCaption2)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                             Spacer()
                             Image(systemName: "play.circle.fill")
-                                .font(.subheadline)
+                                .font(.xbSubheadline)
                                 .foregroundStyle(XboxTheme.emeraldBright.opacity(0.85))
                         }
                     }
@@ -365,7 +365,7 @@ struct CloudGamesView: View {
                 }
             } label: {
                 Image(systemName: isFav ? "star.fill" : "star")
-                    .font(.caption.bold())
+                    .font(.xbCaption.bold())
                     .foregroundStyle(isFav ? Color.yellow : Color.white.opacity(0.88))
                     .frame(width: 28, height: 28)
                     .background(.ultraThinMaterial, in: Circle())
@@ -381,10 +381,10 @@ struct CloudGamesView: View {
         VStack(spacing: 14) {
             XboxIconBadge(systemName: "cloud.slash.fill", color: XboxTheme.warning, size: 56)
             Text("云游戏暂不可用")
-                .font(.headline)
+                .font(.xbHeadline)
                 .foregroundStyle(.white)
             Text(message)
-                .font(.footnote)
+                .font(.xbFootnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
@@ -423,7 +423,7 @@ struct CloudGamesView: View {
                     ? "暂无收藏的云游戏"
                     : (filterMode == .recent ? "暂无最近游玩记录" : "未找到匹配的云游戏")
             )
-            .font(.headline)
+            .font(.xbHeadline)
             .foregroundStyle(.white)
             Text(
                 filterMode == .favorites
@@ -432,7 +432,7 @@ struct CloudGamesView: View {
                        ? "开始任意云游戏后，会在这里置顶显示。"
                        : "换个关键词试试，或切换到「全部」查看完整列表。")
             )
-            .font(.footnote)
+            .font(.xbFootnote)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
         }
@@ -448,7 +448,7 @@ struct CloudGamesView: View {
         )
         .overlay(
             Image(systemName: "gamecontroller.fill")
-                .font(.title2)
+                .font(.xbTitle2)
                 .foregroundStyle(.white.opacity(0.18))
         )
     }

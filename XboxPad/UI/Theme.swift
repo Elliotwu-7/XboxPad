@@ -1,5 +1,75 @@
 import SwiftUI
 
+extension Font {
+    /// Cross-platform typography scale:
+    /// - iOS / iPadOS: uses standard Apple Dynamic Type semantic styles unchanged.
+    /// - macOS: scales up by ~30–36% so desktop text on 1440p / 4K / ultrawide monitors
+    ///   matches iPad readability instead of macOS's tiny 9–11pt default semantic sizes.
+    static var xbTitle2: Font {
+        #if os(macOS)
+        return .system(size: 23, weight: .bold, design: .rounded)
+        #else
+        return .title2
+        #endif
+    }
+
+    static var xbTitle3: Font {
+        #if os(macOS)
+        return .system(size: 20, weight: .semibold, design: .rounded)
+        #else
+        return .title3
+        #endif
+    }
+
+    static var xbHeadline: Font {
+        #if os(macOS)
+        return .system(size: 17, weight: .semibold)
+        #else
+        return .headline
+        #endif
+    }
+
+    static var xbBody: Font {
+        #if os(macOS)
+        return .system(size: 16, weight: .regular)
+        #else
+        return .body
+        #endif
+    }
+
+    static var xbSubheadline: Font {
+        #if os(macOS)
+        return .system(size: 15, weight: .regular)
+        #else
+        return .subheadline
+        #endif
+    }
+
+    static var xbFootnote: Font {
+        #if os(macOS)
+        return .system(size: 13.5, weight: .regular)
+        #else
+        return .footnote
+        #endif
+    }
+
+    static var xbCaption: Font {
+        #if os(macOS)
+        return .system(size: 13, weight: .regular)
+        #else
+        return .caption
+        #endif
+    }
+
+    static var xbCaption2: Font {
+        #if os(macOS)
+        return .system(size: 12, weight: .regular)
+        #else
+        return .caption2
+        #endif
+    }
+}
+
 enum XboxTheme {
     // Core Obsidian + Emerald Palette
     static let bgDeep = Color(red: 0.04, green: 0.055, blue: 0.07)
@@ -120,9 +190,9 @@ struct XboxPrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(compact ? .subheadline.weight(.semibold) : .headline)
+            .font(compact ? .xbSubheadline.weight(.semibold) : .xbHeadline)
             .foregroundStyle(.white)
-            .padding(.horizontal, compact ? 14 : 18)
+            .padding(.horizontal, compact ? 15 : 20)
             .padding(.vertical, compact ? 10 : 13)
             .background(
                 RoundedRectangle(cornerRadius: compact ? 12 : 14, style: .continuous)
@@ -144,10 +214,10 @@ struct XboxSecondaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(compact ? .subheadline.weight(.medium) : .subheadline.weight(.semibold))
+            .font(compact ? .xbSubheadline.weight(.medium) : .xbSubheadline.weight(.semibold))
             .foregroundStyle(.white.opacity(0.92))
-            .padding(.horizontal, compact ? 12 : 16)
-            .padding(.vertical, compact ? 9 : 12)
+            .padding(.horizontal, compact ? 14 : 18)
+            .padding(.vertical, compact ? 10 : 12)
             .background(
                 RoundedRectangle(cornerRadius: compact ? 12 : 14, style: .continuous)
                     .fill(Color.white.opacity(configuration.isPressed ? 0.13 : 0.08))
@@ -185,11 +255,11 @@ struct XboxStatusPill: View {
             .frame(width: 12, height: 12)
 
             Text(text)
-                .font(.caption.weight(.semibold))
+                .font(.xbCaption.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.92))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.horizontal, XboxPlatform.isMac ? 12 : 10)
+        .padding(.vertical, XboxPlatform.isMac ? 6 : 5)
         .background(color.opacity(0.16), in: Capsule())
         .overlay(Capsule().stroke(color.opacity(0.35), lineWidth: 1))
         .onAppear {
@@ -207,18 +277,19 @@ struct XboxIconBadge: View {
     var size: CGFloat = 30
 
     var body: some View {
+        let resolvedSize = XboxPlatform.isMac ? round(size * 1.15) : size
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+            RoundedRectangle(cornerRadius: resolvedSize * 0.28, style: .continuous)
                 .fill(color.opacity(0.18))
                 .overlay(
-                    RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+                    RoundedRectangle(cornerRadius: resolvedSize * 0.28, style: .continuous)
                         .stroke(color.opacity(0.32), lineWidth: 0.8)
                 )
             Image(systemName: systemName)
-                .font(.system(size: size * 0.48, weight: .semibold))
+                .font(.system(size: resolvedSize * 0.48, weight: .semibold))
                 .foregroundStyle(color)
         }
-        .frame(width: size, height: size)
+        .frame(width: resolvedSize, height: resolvedSize)
     }
 }
 
