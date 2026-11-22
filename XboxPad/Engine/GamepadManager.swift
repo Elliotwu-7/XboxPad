@@ -130,10 +130,24 @@ final class GamepadManager: ObservableObject {
         var deviceGyroX: Float = 0
         var deviceGyroY: Float = 0
         var kmMode: KeyboardMouseMode = .gamepadEmulation
-        var mouseSensitivity: Float = 1.0
+        var mouseSensitivity: Float = 1.5
+        var mouseAntiDeadzone: Float = 0.18
+        var mouseYScale: Float = 0.85
+        var mouseInvertY: Bool = false
+        var pendingMouseDX: Float = 0
+        var pendingMouseDY: Float = 0
+        var mouseSmoothX: Float = 0
+        var mouseSmoothY: Float = 0
+        var lastMouseMoveTime: CFTimeInterval = 0
+        var nativeMouseFracX: Float = 0
+        var nativeMouseFracY: Float = 0
         var mouseVelX: Float = 0
         var mouseVelY: Float = 0
-        var mouseButtonsMask: UInt8 = 0 // bit0=LMB, bit1=RMB, bit2=MMB
+        var mouseButtonsMask: UInt8 = 0 // bit0=LMB, bit1=RMB, bit2=MMB, bit3=Side1, bit4=Side2
+        var scrollPulseKind: UInt8 = 0 // 1=dpadUp, 2=dpadDown, 3=dpadLeft, 4=dpadRight, 5=LB, 6=RB
+        var scrollPulseUntil: CFTimeInterval = 0
+        var arrowStickX: Float = 0
+        var arrowStickY: Float = 0
         var pressedKeys: Set<GCKeyCode> = []
         var mapShareToNexus = true
         var menuComboEnabled = true
@@ -210,6 +224,9 @@ final class GamepadManager: ObservableObject {
         let gInv = settings.gyroInvertY
         let kmMode = settings.keyboardMouseMode
         let mSens = Float(settings.mouseSensitivity)
+        let mAntiDZ = Float(settings.mouseAntiDeadzone)
+        let mYScale = Float(settings.mouseYScale)
+        let mInvY = settings.mouseInvertY
         let share = settings.mapShareToNexus
         let combo = settings.menuComboEnabled
         let ninLayout = settings.nintendoButtonLayout
@@ -225,6 +242,9 @@ final class GamepadManager: ObservableObject {
             runtime.gyroInvertY = gInv
             runtime.kmMode = kmMode
             runtime.mouseSensitivity = mSens
+            runtime.mouseAntiDeadzone = mAntiDZ
+            runtime.mouseYScale = mYScale
+            runtime.mouseInvertY = mInvY
             runtime.mapShareToNexus = share
             runtime.menuComboEnabled = combo
             runtime.nintendoLayout = ninLayout
@@ -235,9 +255,19 @@ final class GamepadManager: ObservableObject {
                 runtime.deviceGyroY = 0
             }
             if kmMode == .off {
+                runtime.pendingMouseDX = 0
+                runtime.pendingMouseDY = 0
+                runtime.mouseSmoothX = 0
+                runtime.mouseSmoothY = 0
+                runtime.nativeMouseFracX = 0
+                runtime.nativeMouseFracY = 0
                 runtime.mouseVelX = 0
                 runtime.mouseVelY = 0
                 runtime.mouseButtonsMask = 0
+                runtime.scrollPulseKind = 0
+                runtime.scrollPulseUntil = 0
+                runtime.arrowStickX = 0
+                runtime.arrowStickY = 0
                 runtime.pressedKeys.removeAll(keepingCapacity: true)
             }
         }
@@ -307,9 +337,19 @@ final class GamepadManager: ObservableObject {
                 runtime.hasVirtualInput = false
                 runtime.deviceGyroX = 0
                 runtime.deviceGyroY = 0
+                runtime.pendingMouseDX = 0
+                runtime.pendingMouseDY = 0
+                runtime.mouseSmoothX = 0
+                runtime.mouseSmoothY = 0
+                runtime.nativeMouseFracX = 0
+                runtime.nativeMouseFracY = 0
                 runtime.mouseVelX = 0
                 runtime.mouseVelY = 0
                 runtime.mouseButtonsMask = 0
+                runtime.scrollPulseKind = 0
+                runtime.scrollPulseUntil = 0
+                runtime.arrowStickX = 0
+                runtime.arrowStickY = 0
                 runtime.pressedKeys.removeAll(keepingCapacity: true)
             }
         }
@@ -549,6 +589,72 @@ final class GamepadManager: ObservableObject {
         refreshTelemetrySnapshot()
     }
 
+    // MARK: - Platform Mouse & Keyboard Direct Injection (macOS Pointer-Locked AppKit + Trackpad)
+
+    /// Injects raw relative pointer movement (`dx > 0` right, `dy > 0` up) directly from macOS AppKit
+    /// while pointer is locked. Supports both physical mice and MacBook trackpads cleanly without UI click leaks.
+    func injectPlatformMouseDelta(dx: Float, dy: Float) {
+        inputQueue.async { [runtime] in
+            Self.handleMouseDeltaLocked(runtime: runtime, deltaX: dx, deltaY: dy)
+        }
+    }
+
+    func injectPlatformMouseButton(buttonIndex: Int, pressed: Bool) {
+        guard buttonIndex >= 0 && buttonIndex <= 4 else { return }
+        let bit: UInt8 = 1 << UInt8(buttonIndex)
+        inputQueue.async { [runtime] in
+            Self.handleMouseButtonLocked(runtime: runtime, bit: bit, pressed: pressed)
+        }
+    }
+
+    func injectPlatformMouseScroll(dx: Float, dy: Float) {
+        inputQueue.async { [runtime] in
+            Self.handleMouseScrollLocked(runtime: runtime, xVal: dx, yVal: dy)
+        }
+    }
+
+    func clearPlatformMouseState() {
+        inputQueue.async { [runtime] in
+            let hadButtons = runtime.mouseButtonsMask != 0
+            runtime.pendingMouseDX = 0
+            runtime.pendingMouseDY = 0
+            runtime.mouseSmoothX = 0
+            runtime.mouseSmoothY = 0
+            runtime.nativeMouseFracX = 0
+            runtime.nativeMouseFracY = 0
+            runtime.mouseVelX = 0
+            runtime.mouseVelY = 0
+            runtime.mouseButtonsMask = 0
+            runtime.scrollPulseKind = 0
+            runtime.scrollPulseUntil = 0
+            if runtime.isStreamingActive {
+                if runtime.kmMode == .nativeKM && hadButtons {
+                    runtime.onMouseEvent?(0, 0, 0, 0, 0, 0)
+                } else if runtime.kmMode == .gamepadEmulation {
+                    Self.sendSlotLocked(runtime: runtime, slot: 0, force: false)
+                }
+            }
+        }
+    }
+
+    func injectPlatformKey(_ keyCode: GCKeyCode, pressed: Bool) {
+        inputQueue.async { [runtime] in
+            guard runtime.isStreamingActive, runtime.kmMode != .off else { return }
+            if pressed {
+                runtime.pressedKeys.insert(keyCode)
+            } else {
+                runtime.pressedKeys.remove(keyCode)
+            }
+            if runtime.kmMode == .nativeKM {
+                if let vk = Self.hidKeyToWindowsVK(keyCode) {
+                    runtime.onKeyboardEvent?(vk, pressed)
+                }
+            } else {
+                Self.sendSlotLocked(runtime: runtime, slot: 0, force: false)
+            }
+        }
+    }
+
     private func bindHardwareKeyboardAndMouse() {
         if let keyboard = GCKeyboard.coalesced {
             keyboard.handlerQueue = inputQueue
@@ -569,10 +675,17 @@ final class GamepadManager: ObservableObject {
             }
         }
 
+        // On macOS, pointer-locked AppKit NSEvent monitoring drives mouse & trackpad cleanly
+        // (prevents UI clicks from firing into Xbox, supports Trackpad & side buttons, avoids double-counting).
+        #if os(iOS)
         let mice = GCMouse.mice()
         if mice.isEmpty {
             inputQueue.async { [runtime] in
                 runtime.mouseButtonsMask = 0
+                runtime.pendingMouseDX = 0
+                runtime.pendingMouseDY = 0
+                runtime.mouseSmoothX = 0
+                runtime.mouseSmoothY = 0
                 runtime.mouseVelX = 0
                 runtime.mouseVelY = 0
             }
@@ -580,21 +693,7 @@ final class GamepadManager: ObservableObject {
         for mouse in mice {
             mouse.handlerQueue = inputQueue
             mouse.mouseInput?.mouseMovedHandler = { [runtime] (_: GCMouseInput, deltaX: Float, deltaY: Float) in
-                guard runtime.isStreamingActive, runtime.kmMode != .off else { return }
-                if runtime.kmMode == .nativeKM {
-                    let scale = runtime.mouseSensitivity
-                    let ix = Int32((deltaX * scale).rounded())
-                    let iy = Int32((-deltaY * scale).rounded())
-                    if ix != 0 || iy != 0 {
-                        runtime.onMouseEvent?(ix, iy, 0, 0, runtime.mouseButtonsMask, 0)
-                    }
-                } else {
-                    // Accumulate smoothed velocity for right-stick camera look (decays on each 120Hz tick)
-                    let gain: Float = 0.042 * runtime.mouseSensitivity
-                    runtime.mouseVelX = max(-1.0, min(1.0, runtime.mouseVelX + deltaX * gain))
-                    runtime.mouseVelY = max(-1.0, min(1.0, runtime.mouseVelY + deltaY * gain))
-                    Self.sendSlotLocked(runtime: runtime, slot: 0, force: false)
-                }
+                Self.handleMouseDeltaLocked(runtime: runtime, deltaX: deltaX, deltaY: deltaY)
             }
 
             mouse.mouseInput?.leftButton.pressedChangedHandler = { [runtime] _, _, pressed in
@@ -607,13 +706,66 @@ final class GamepadManager: ObservableObject {
                 Self.handleMouseButtonLocked(runtime: runtime, bit: 1 << 2, pressed: pressed)
             }
             mouse.mouseInput?.scroll.valueChangedHandler = { [runtime] (_: GCControllerDirectionPad, xVal: Float, yVal: Float) in
-                guard runtime.isStreamingActive, runtime.kmMode == .nativeKM else { return }
-                let wx = Int32((xVal * 120.0).rounded())
-                let wy = Int32((yVal * 120.0).rounded())
-                if wx != 0 || wy != 0 {
-                    runtime.onMouseEvent?(0, 0, wx, wy, runtime.mouseButtonsMask, 0)
-                }
+                Self.handleMouseScrollLocked(runtime: runtime, xVal: xVal, yVal: yVal)
             }
+        }
+        #endif
+    }
+
+    private nonisolated static func handleMouseDeltaLocked(
+        runtime: InputRuntime,
+        deltaX: Float,
+        deltaY: Float
+    ) {
+        guard runtime.isStreamingActive, runtime.kmMode != .off else { return }
+        if runtime.kmMode == .nativeKM {
+            let scale = runtime.mouseSensitivity
+            let yDir: Float = runtime.mouseInvertY ? 1.0 : -1.0
+            runtime.nativeMouseFracX += deltaX * scale
+            runtime.nativeMouseFracY += deltaY * scale * runtime.mouseYScale * yDir
+            let ix = Int32(runtime.nativeMouseFracX.rounded(.towardZero))
+            let iy = Int32(runtime.nativeMouseFracY.rounded(.towardZero))
+            if ix != 0 || iy != 0 {
+                runtime.nativeMouseFracX -= Float(ix)
+                runtime.nativeMouseFracY -= Float(iy)
+                runtime.onMouseEvent?(ix, iy, 0, 0, runtime.mouseButtonsMask & 0x07, 0)
+            }
+        } else {
+            // Accumulate raw hardware deltas between 120Hz ticks (consumed & integrated on every tick)
+            runtime.pendingMouseDX += deltaX
+            runtime.pendingMouseDY += deltaY
+            runtime.lastMouseMoveTime = CACurrentMediaTime()
+        }
+    }
+
+    private nonisolated static func handleMouseScrollLocked(
+        runtime: InputRuntime,
+        xVal: Float,
+        yVal: Float
+    ) {
+        guard runtime.isStreamingActive, runtime.kmMode != .off else { return }
+        if runtime.kmMode == .nativeKM {
+            let wx = Int32((xVal * 120.0).rounded())
+            let wy = Int32((yVal * 120.0).rounded())
+            if wx != 0 || wy != 0 {
+                runtime.onMouseEvent?(0, 0, wx, wy, runtime.mouseButtonsMask & 0x07, 0)
+            }
+        } else {
+            let action = runtime.keyBindings.scrollAction
+            guard action != .off, abs(yVal) > 0.05 else { return }
+            let up = yVal > 0
+            switch action {
+            case .off:
+                return
+            case .dpadUpDown:
+                runtime.scrollPulseKind = up ? 1 : 2
+            case .dpadLeftRight:
+                runtime.scrollPulseKind = up ? 3 : 4
+            case .lbRb:
+                runtime.scrollPulseKind = up ? 5 : 6
+            }
+            runtime.scrollPulseUntil = CACurrentMediaTime() + 0.065
+            sendSlotLocked(runtime: runtime, slot: 0, force: false)
         }
     }
 
@@ -629,7 +781,7 @@ final class GamepadManager: ObservableObject {
             runtime.mouseButtonsMask &= ~bit
         }
         if runtime.kmMode == .nativeKM {
-            runtime.onMouseEvent?(0, 0, 0, 0, runtime.mouseButtonsMask, 0)
+            runtime.onMouseEvent?(0, 0, 0, 0, runtime.mouseButtonsMask & 0x07, 0)
         } else {
             sendSlotLocked(runtime: runtime, slot: 0, force: false)
         }
@@ -738,12 +890,73 @@ final class GamepadManager: ObservableObject {
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: .microseconds(8_333), leeway: .microseconds(500))
         timer.setEventHandler {
-            // Smooth exponential decay on mouse-to-stick velocity when mouse stops moving
             if runtime.kmMode == .gamepadEmulation {
-                runtime.mouseVelX *= 0.62
-                runtime.mouseVelY *= 0.62
-                if abs(runtime.mouseVelX) < 0.008 { runtime.mouseVelX = 0 }
-                if abs(runtime.mouseVelY) < 0.008 { runtime.mouseVelY = 0 }
+                let now = CACurrentMediaTime()
+                let dx = runtime.pendingMouseDX
+                let dy = runtime.pendingMouseDY
+                runtime.pendingMouseDX = 0
+                runtime.pendingMouseDY = 0
+
+                let baseGain: Float = 0.068 * runtime.mouseSensitivity
+                let sampleX = dx * baseGain
+                let sampleY = dy * baseGain * runtime.mouseYScale
+
+                if abs(dx) > 0.0001 || abs(dy) > 0.0001 {
+                    runtime.mouseSmoothX = runtime.mouseSmoothX * 0.28 + sampleX * 0.72
+                    runtime.mouseSmoothY = runtime.mouseSmoothY * 0.28 + sampleY * 0.72
+                } else {
+                    let idle = now - runtime.lastMouseMoveTime
+                    // Keep brief continuity across 60Hz–90Hz USB/Bluetooth/Trackpad intervals,
+                    // then snap cleanly to zero as soon as hand stops moving.
+                    let decay: Float = idle < 0.018 ? 0.80 : 0.42
+                    runtime.mouseSmoothX *= decay
+                    runtime.mouseSmoothY *= decay
+                    if abs(runtime.mouseSmoothX) < 0.012 { runtime.mouseSmoothX = 0 }
+                    if abs(runtime.mouseSmoothY) < 0.012 { runtime.mouseSmoothY = 0 }
+                }
+
+                // Apply circular response curve + in-game right-stick anti-deadzone lift
+                // so micro-aiming immediately clears console games' built-in 15-22% deadzone.
+                let rawMag = hypot(runtime.mouseSmoothX, runtime.mouseSmoothY)
+                if rawMag > 0.012 {
+                    let clamped = min(rawMag, 1.0)
+                    let curved = pow(clamped, 0.76)
+                    let antiDZ = max(0.0, min(0.38, runtime.mouseAntiDeadzone))
+                    let outMag = min(1.0, antiDZ + (1.0 - antiDZ) * curved)
+                    let scale = outMag / rawMag
+                    runtime.mouseVelX = runtime.mouseSmoothX * scale
+                    runtime.mouseVelY = runtime.mouseSmoothY * scale * (runtime.mouseInvertY ? -1.0 : 1.0)
+                } else {
+                    runtime.mouseVelX = 0
+                    runtime.mouseVelY = 0
+                }
+
+                if runtime.scrollPulseKind != 0 && now >= runtime.scrollPulseUntil {
+                    runtime.scrollPulseKind = 0
+                }
+
+                // Smooth right-stick ramp when using arrow keys in Pure Keyboard mode
+                if runtime.keyBindings.arrowsAsRightStick {
+                    let keys = runtime.pressedKeys
+                    var tx: Float = 0
+                    var ty: Float = 0
+                    if keys.contains(.leftArrow) { tx -= 1 }
+                    if keys.contains(.rightArrow) { tx += 1 }
+                    if keys.contains(.upArrow) { ty += 1 }
+                    if keys.contains(.downArrow) { ty -= 1 }
+                    if tx != 0 && ty != 0 {
+                        tx *= 0.70710678
+                        ty *= 0.70710678
+                    }
+                    let speed: Float = (runtime.keyBindings.altSlowWalk && keys.contains(.leftAlt)) ? 0.48 : 0.88
+                    runtime.arrowStickX = runtime.arrowStickX * 0.45 + (tx * speed) * 0.55
+                    runtime.arrowStickY = runtime.arrowStickY * 0.45 + (ty * speed) * 0.55
+                    if abs(runtime.arrowStickX) < 0.01 { runtime.arrowStickX = 0 }
+                    if abs(runtime.arrowStickY) < 0.01 { runtime.arrowStickY = 0 }
+                } else {
+                    runtime.arrowStickX = 0
+                    runtime.arrowStickY = 0
+                }
             }
             sendAllSlotsLocked(runtime: runtime, force: false)
         }
@@ -975,42 +1188,85 @@ final class GamepadManager: ObservableObject {
         // Keyboard & Mouse -> Xbox Gamepad Emulation (works on 100% of Xbox console & cloud games!)
         if runtime.kmMode == .gamepadEmulation {
             let keys = runtime.pressedKeys
-            if !keys.isEmpty || runtime.mouseButtonsMask != 0
+            let hasScroll = runtime.scrollPulseKind != 0
+            let hasArrowStick = abs(runtime.arrowStickX) > 0.001 || abs(runtime.arrowStickY) > 0.001
+            if !keys.isEmpty || runtime.mouseButtonsMask != 0 || hasScroll || hasArrowStick
                 || abs(runtime.mouseVelX) > 0.001 || abs(runtime.mouseVelY) > 0.001 {
+                let kb = runtime.keyBindings
                 var kx: Float = 0
                 var ky: Float = 0
                 if keys.contains(.keyA) { kx -= 1 }
                 if keys.contains(.keyD) { kx += 1 }
-                if keys.contains(.keyW) { ky += 1 }
-                if keys.contains(.keyS) { ky -= 1 }
+                if kb.wasdDriveTriggers {
+                    if keys.contains(.keyW) { frame.right_trigger = 1.0 }
+                    if keys.contains(.keyS) { frame.left_trigger = 1.0 }
+                } else {
+                    if keys.contains(.keyW) { ky += 1 }
+                    if keys.contains(.keyS) { ky -= 1 }
+                }
                 if kx != 0 && ky != 0 {
-                    let inv = 0.70710678
-                    kx *= Float(inv)
-                    ky *= Float(inv)
+                    let inv: Float = 0.70710678
+                    kx *= inv
+                    ky *= inv
+                }
+                if kb.altSlowWalk && keys.contains(.leftAlt) {
+                    kx *= 0.45
+                    ky *= 0.45
                 }
                 if kx != 0 || ky != 0 {
                     frame.left_thumb_x = max(-1.0, min(1.0, frame.left_thumb_x + kx))
                     frame.left_thumb_y = max(-1.0, min(1.0, frame.left_thumb_y - ky))
                 }
-                if abs(runtime.mouseVelX) > 0.001 || abs(runtime.mouseVelY) > 0.001 {
-                    frame.right_thumb_x = max(-1.0, min(1.0, frame.right_thumb_x + runtime.mouseVelX))
-                    frame.right_thumb_y = max(-1.0, min(1.0, frame.right_thumb_y - runtime.mouseVelY))
+                let rxCombined = runtime.mouseVelX + runtime.arrowStickX
+                let ryCombined = runtime.mouseVelY + runtime.arrowStickY
+                if abs(rxCombined) > 0.001 || abs(ryCombined) > 0.001 {
+                    frame.right_thumb_x = max(-1.0, min(1.0, frame.right_thumb_x + rxCombined))
+                    frame.right_thumb_y = max(-1.0, min(1.0, frame.right_thumb_y - ryCombined))
                 }
-                let kb = runtime.keyBindings
-                if (runtime.mouseButtonsMask & 1) != 0 { frame.right_trigger = 1.0 }
-                if (runtime.mouseButtonsMask & 2) != 0 { frame.left_trigger = 1.0 }
-                if (runtime.mouseButtonsMask & 4) != 0 || Self.isKeyPressed(kb.r3Key, in: keys) { frame.right_thumb = 1 }
+
+                // Customizable mouse button mappings (LMB, RMB, MMB, Side1, Side2)
+                if (runtime.mouseButtonsMask & (1 << 0)) != 0 { applyMouseAction(kb.leftClick, to: &frame) }
+                if (runtime.mouseButtonsMask & (1 << 1)) != 0 { applyMouseAction(kb.rightClick, to: &frame) }
+                if (runtime.mouseButtonsMask & (1 << 2)) != 0 { applyMouseAction(kb.middleClick, to: &frame) }
+                if (runtime.mouseButtonsMask & (1 << 3)) != 0 { applyMouseAction(kb.sideButton1, to: &frame) }
+                if (runtime.mouseButtonsMask & (1 << 4)) != 0 { applyMouseAction(kb.sideButton2, to: &frame) }
+
+                // Scroll wheel pulse
+                switch runtime.scrollPulseKind {
+                case 1: frame.dpad_up = 1
+                case 2: frame.dpad_down = 1
+                case 3: frame.dpad_left = 1
+                case 4: frame.dpad_right = 1
+                case 5: frame.left_shoulder = 1
+                case 6: frame.right_shoulder = 1
+                default: break
+                }
+
                 if Self.isKeyPressed(kb.aKey, in: keys) || keys.contains(.returnOrEnter) { frame.a = 1 }
                 if Self.isKeyPressed(kb.bKey, in: keys) || keys.contains(.deleteOrBackspace) { frame.b = 1 }
                 if Self.isKeyPressed(kb.xKey, in: keys) { frame.x = 1 }
                 if Self.isKeyPressed(kb.yKey, in: keys) { frame.y = 1 }
                 if Self.isKeyPressed(kb.lbKey, in: keys) { frame.left_shoulder = 1 }
                 if Self.isKeyPressed(kb.rbKey, in: keys) { frame.right_shoulder = 1 }
+                if Self.isKeyPressed(kb.ltKey, in: keys) { frame.left_trigger = 1.0 }
+                if Self.isKeyPressed(kb.rtKey, in: keys) { frame.right_trigger = 1.0 }
                 if Self.isKeyPressed(kb.l3Key, in: keys) { frame.left_thumb = 1 }
-                if keys.contains(.upArrow) { frame.dpad_up = 1 }
-                if keys.contains(.downArrow) { frame.dpad_down = 1 }
-                if keys.contains(.leftArrow) { frame.dpad_left = 1 }
-                if keys.contains(.rightArrow) { frame.dpad_right = 1 }
+                if Self.isKeyPressed(kb.r3Key, in: keys) { frame.right_thumb = 1 }
+
+                // D-Pad: arrow keys (unless arrows drive right stick) + convenient 1/2/3/4 beside WASD
+                if !kb.arrowsAsRightStick {
+                    if keys.contains(.upArrow) { frame.dpad_up = 1 }
+                    if keys.contains(.downArrow) { frame.dpad_down = 1 }
+                    if keys.contains(.leftArrow) { frame.dpad_left = 1 }
+                    if keys.contains(.rightArrow) { frame.dpad_right = 1 }
+                }
+                if kb.numberKeysAsDpad {
+                    if keys.contains(.one) { frame.dpad_up = 1 }
+                    if keys.contains(.two) { frame.dpad_down = 1 }
+                    if keys.contains(.three) { frame.dpad_left = 1 }
+                    if keys.contains(.four) { frame.dpad_right = 1 }
+                }
+
                 if Self.isKeyPressed(kb.viewKey, in: keys) { frame.view = 1 }
                 if Self.isKeyPressed(kb.menuKey, in: keys) { frame.menu = 1 }
                 if Self.isKeyPressed(kb.nexusKey, in: keys) { frame.nexus = 1 }
@@ -1062,8 +1318,26 @@ final class GamepadManager: ObservableObject {
         }
     }
 
+    private nonisolated static func applyMouseAction(_ action: MouseButtonAction, to frame: inout XboxPadInputFrame) {
+        switch action {
+        case .none: break
+        case .rt: frame.right_trigger = 1.0
+        case .lt: frame.left_trigger = 1.0
+        case .rb: frame.right_shoulder = 1
+        case .lb: frame.left_shoulder = 1
+        case .a: frame.a = 1
+        case .b: frame.b = 1
+        case .x: frame.x = 1
+        case .y: frame.y = 1
+        case .l3: frame.left_thumb = 1
+        case .r3: frame.right_thumb = 1
+        case .view: frame.view = 1
+        case .menu: frame.menu = 1
+        }
+    }
+
     private nonisolated static func isKeyPressed(_ name: String, in keys: Set<GCKeyCode>) -> Bool {
-        guard let code = gcKeyCode(forName: name) else { return false }
+        guard !name.isEmpty, let code = gcKeyCode(forName: name) else { return false }
         return keys.contains(code)
     }
 
@@ -1088,6 +1362,14 @@ final class GamepadManager: ObservableObject {
         case "C": return .keyC
         case "V": return .keyV
         case "B": return .keyB
+        case "M": return .keyM
+        case "P": return .keyP
+        case "U": return .keyU
+        case "I": return .keyI
+        case "O": return .keyO
+        case "J": return .keyJ
+        case "K": return .keyK
+        case "L": return .keyL
         case "1": return .one
         case "2": return .two
         case "3": return .three

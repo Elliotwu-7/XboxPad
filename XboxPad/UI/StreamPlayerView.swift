@@ -15,7 +15,9 @@ struct StreamPlayerView: View {
     @ObservedObject private var externalDisplay = ExternalDisplayManager.shared
     @State private var showOverlayBar = false
     @State private var showMoreDrawer = false
+    @State private var showKMPanel = false
     @State private var showHUD: Bool
+    @State private var showKeymapHUD: Bool
     @State private var manualVirtualGamepad = false
     @State private var isEditingVirtualLayout = false
     @State private var showCastSheet = false
@@ -41,6 +43,7 @@ struct StreamPlayerView: View {
             )
         )
         _showHUD = State(initialValue: settings.showPerformanceHUD)
+        _showKeymapHUD = State(initialValue: settings.showKeymapHintHUD)
     }
 
     private var shouldShowVirtualGamepad: Bool {
@@ -59,6 +62,7 @@ struct StreamPlayerView: View {
     private func closeOverlayBar() {
         withAnimation(.spring(response: 0.25, dampingFraction: 0.88)) {
             showMoreDrawer = false
+            showKMPanel = false
             showOverlayBar = false
         }
     }
@@ -151,7 +155,11 @@ struct StreamPlayerView: View {
                         .padding(.top, 12)
                         .padding(.horizontal, 16)
 
-                    if showMoreDrawer {
+                    if showKMPanel {
+                        kmQuickTuningPanel
+                            .padding(.horizontal, 16)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    } else if showMoreDrawer {
                         moreToolsDrawer
                             .padding(.horizontal, 16)
                             .transition(.move(edge: .top).combined(with: .opacity))
@@ -160,6 +168,23 @@ struct StreamPlayerView: View {
                     Spacer()
                 }
                 .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            // Compact bottom Keymap Hint HUD for K&M Emulation on non-K&M games (toggle with F1)
+            if showKeymapHUD,
+               appState.settings.keyboardMouseMode == .gamepadEmulation,
+               !showOverlayBar,
+               !showKMPanel,
+               !externalDisplay.isRenderingExternally,
+               case .streaming = session.connectionState {
+                VStack {
+                    Spacer()
+                    keymapHintStrip
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, session.toastMessage != nil ? 76 : 14)
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity)
             }
 
             // Toast notification banner
@@ -246,6 +271,19 @@ struct StreamPlayerView: View {
         .onReceive(NotificationCenter.default.publisher(for: .xboxpadToggleMic)) { _ in
             session.toggleMicrophone()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadToggleKeymapHUD)) { _ in
+            withAnimation(.easeInOut(duration: 0.18)) {
+                showKeymapHUD.toggle()
+            }
+            appState.settings.showKeymapHintHUD = showKeymapHUD
+            session.showToast(showKeymapHUD ? "已开启底部键位提示（按 F1 可隐藏）" : "已隐藏底部键位提示（按 F1 可恢复）")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xboxpadPointerLockChanged)) { note in
+            guard let locked = note.object as? Bool else { return }
+            if locked {
+                session.showToast("鼠标已锁定（\(appState.settings.kmPreset.label)）· Esc 解锁 · F1 键位提示")
+            }
+        }
         .sheet(isPresented: $showCastSheet) {
             castControlSheet
         }
@@ -299,11 +337,13 @@ struct StreamPlayerView: View {
             session.stop()
         }
         .onChange(of: showOverlayBar) { _ in syncStreamOverlayFlag() }
+        .onChange(of: showKMPanel) { _ in syncStreamOverlayFlag() }
         .onChange(of: showSettingsSheet) { _ in syncStreamOverlayFlag() }
         .onChange(of: showCastSheet) { _ in syncStreamOverlayFlag() }
         .onChange(of: appState.settings) { newSettings in
             session.updateSettings(newSettings)
             showHUD = newSettings.showPerformanceHUD
+            showKeymapHUD = newSettings.showKeymapHintHUD
             externalDisplay.updateStreamHDR(newSettings.hdrToneMode)
             externalDisplay.isExternalOutputEnabled = newSettings.externalDisplayFullscreen
             #if os(macOS)
@@ -313,7 +353,7 @@ struct StreamPlayerView: View {
     }
 
     private func syncStreamOverlayFlag() {
-        appState.isStreamOverlayOpen = showOverlayBar || showSettingsSheet || showCastSheet
+        appState.isStreamOverlayOpen = showOverlayBar || showKMPanel || showSettingsSheet || showCastSheet
     }
 
     private var recordingElapsedLabel: String {
@@ -579,6 +619,18 @@ struct StreamPlayerView: View {
                     }
 
                     overlayChipButton(
+                        title: "键鼠",
+                        systemImage: "keyboard",
+                        active: showKMPanel || appState.settings.keyboardMouseMode != .off,
+                        activeColor: XboxTheme.info
+                    ) {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                            showMoreDrawer = false
+                            showKMPanel.toggle()
+                        }
+                    }
+
+                    overlayChipButton(
                         title: "设置",
                         systemImage: "slider.horizontal.3",
                         active: showSettingsSheet,
@@ -595,6 +647,7 @@ struct StreamPlayerView: View {
                         activeColor: XboxTheme.emeraldBright
                     ) {
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                            showKMPanel = false
                             showMoreDrawer.toggle()
                         }
                     }
@@ -627,6 +680,209 @@ struct StreamPlayerView: View {
         .background(Color.black.opacity(0.50), in: Capsule())
         .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
         .shadow(color: .black.opacity(0.45), radius: 16, x: 0, y: 6)
+    }
+
+    // MARK: - In-Stream Quick K&M Tuning Panel & Keymap Hint Strip
+
+    private var kmQuickTuningPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "keyboard")
+                    .font(.xbSubheadline.bold())
+                    .foregroundStyle(XboxTheme.info)
+                Text("键鼠实时调校（非键鼠游戏全适配）")
+                    .font(.xbSubheadline.bold())
+                    .foregroundStyle(.white)
+                Spacer()
+                HStack(spacing: 6) {
+                    ForEach(KeyboardMouseMode.allCases) { mode in
+                        let active = appState.settings.keyboardMouseMode == mode
+                        Button {
+                            appState.settings.keyboardMouseMode = mode
+                        } label: {
+                            Text(mode.shortLabel)
+                                .font(.xbCaption.weight(.semibold))
+                                .foregroundStyle(active ? .black : .white.opacity(0.85))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    active ? AnyShapeStyle(XboxTheme.info) : AnyShapeStyle(Color.white.opacity(0.10)),
+                                    in: Capsule()
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            if appState.settings.keyboardMouseMode != .off {
+                if appState.settings.keyboardMouseMode == .gamepadEmulation {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(KMControlPreset.allCases) { preset in
+                                    let active = appState.settings.kmPreset == preset
+                                    Button {
+                                        appState.applyKMPreset(preset)
+                                    } label: {
+                                        Text(preset.label)
+                                            .font(.xbCaption.weight(.bold))
+                                            .foregroundStyle(active ? .black : .white.opacity(0.9))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(
+                                                active ? AnyShapeStyle(XboxTheme.emeraldBright) : AnyShapeStyle(Color.white.opacity(0.09)),
+                                                in: Capsule()
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        Text(appState.settings.kmPreset.summary)
+                            .font(.xbCaption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("鼠标灵敏度")
+                                .font(.xbCaption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.88))
+                            Spacer()
+                            Text(String(format: "%.1f×", appState.settings.mouseSensitivity))
+                                .font(.xbCaption.monospacedDigit().bold())
+                                .foregroundStyle(XboxTheme.info)
+                        }
+                        Slider(value: $appState.settings.mouseSensitivity, in: 0.2...6.0, step: 0.1)
+                            .tint(XboxTheme.info)
+                    }
+
+                    if appState.settings.keyboardMouseMode == .gamepadEmulation {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("游戏死区补偿")
+                                    .font(.xbCaption.weight(.semibold))
+                                    .foregroundStyle(.white.opacity(0.88))
+                                Spacer()
+                                Text("\(Int((appState.settings.mouseAntiDeadzone * 100).rounded()))%")
+                                    .font(.xbCaption.monospacedDigit().bold())
+                                    .foregroundStyle(XboxTheme.emeraldBright)
+                            }
+                            Slider(value: $appState.settings.mouseAntiDeadzone, in: 0.0...0.35, step: 0.01)
+                                .tint(XboxTheme.emeraldBright)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("垂直比例 Y/X")
+                                .font(.xbCaption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.88))
+                            Spacer()
+                            Text(String(format: "%.2f×", appState.settings.mouseYScale))
+                                .font(.xbCaption.monospacedDigit().bold())
+                                .foregroundStyle(.cyan)
+                        }
+                        Slider(value: $appState.settings.mouseYScale, in: 0.4...1.5, step: 0.05)
+                            .tint(.cyan)
+                    }
+                }
+
+                HStack(spacing: 14) {
+                    Toggle("反转鼠标 Y 轴", isOn: $appState.settings.mouseInvertY)
+                        .font(.xbCaption.weight(.medium))
+                        .tint(XboxTheme.info)
+                    Toggle("底部键位提示 (F1)", isOn: $appState.settings.showKeymapHintHUD)
+                        .font(.xbCaption.weight(.medium))
+                        .tint(XboxTheme.emerald)
+                    Spacer()
+                    Button {
+                        closeOverlayBar()
+                    } label: {
+                        Text("回到游戏")
+                            .font(.xbCaption.bold())
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(XboxTheme.emeraldBright, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: 780)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(Color.black.opacity(0.64), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(XboxTheme.info.opacity(0.32), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.45), radius: 18, x: 0, y: 8)
+    }
+
+    private var keymapHintStrip: some View {
+        let kb = appState.settings.keyboardBindingMap
+        var items: [(String, String)] = []
+        if kb.wasdDriveTriggers {
+            items.append(("W/S", "油门/刹车"))
+            items.append(("A/D", "转向"))
+        } else {
+            items.append(("WASD", "移动"))
+        }
+        if kb.arrowsAsRightStick {
+            items.append(("↑↓←→", "视角"))
+        } else {
+            items.append(("鼠标", "视角"))
+        }
+        if kb.leftClick != .none { items.append(("左键", kb.leftClick.shortLabel)) }
+        if kb.rightClick != .none { items.append(("右键", kb.rightClick.shortLabel)) }
+        if !kb.aKey.isEmpty { items.append((kb.aKey, "A")) }
+        if !kb.bKey.isEmpty { items.append((kb.bKey, "B")) }
+        if !kb.xKey.isEmpty { items.append((kb.xKey, "X")) }
+        if !kb.yKey.isEmpty { items.append((kb.yKey, "Y")) }
+        if !kb.lbKey.isEmpty { items.append((kb.lbKey, "LB")) }
+        if !kb.rbKey.isEmpty { items.append((kb.rbKey, "RB")) }
+        if kb.numberKeysAsDpad { items.append(("1-4", "十字键")) }
+        if kb.scrollAction != .off { items.append(("滚轮", kb.scrollAction.shortLabel)) }
+        if !kb.menuKey.isEmpty { items.append((kb.menuKey, "菜单")) }
+        if XboxPlatform.isMac {
+            items.append(("Esc", "解锁"))
+            items.append(("F1", "隐藏"))
+        }
+
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Text(appState.settings.kmPreset.label)
+                    .font(.xbCaption2.bold())
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(XboxTheme.emeraldBright, in: Capsule())
+
+                ForEach(Array(items.enumerated()), id: \.offset) { _, pair in
+                    HStack(spacing: 3) {
+                        Text(pair.0)
+                            .font(.system(size: XboxPlatform.isMac ? 11 : 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        Text(pair.1)
+                            .font(.system(size: XboxPlatform.isMac ? 11 : 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.74))
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Color.black.opacity(0.62), in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 0.8))
     }
 
     // MARK: - Secondary Tools Quick Drawer (Clean 2-Row Grid)

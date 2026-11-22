@@ -32,6 +32,11 @@ struct XboxPadApp: App {
                 }
                 .keyboardShortcut("m", modifiers: [.command, .option])
 
+                Button("显示 / 隐藏键位提示条 (F1)") {
+                    NotificationCenter.default.post(name: .xboxpadToggleKeymapHUD, object: nil)
+                }
+                .keyboardShortcut("k", modifiers: [.command, .option])
+
                 Button("设置与手柄") {
                     NotificationCenter.default.post(name: .xboxpadOpenSettings, object: nil)
                 }

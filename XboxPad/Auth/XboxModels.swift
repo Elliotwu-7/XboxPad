@@ -550,17 +550,266 @@ struct KeyboardBindingMap: Codable, Equatable, Sendable {
     var xKey: String = "R"
     var yKey: String = "E"
     var lbKey: String = "Q"
-    var rbKey: String = "G"
+    var rbKey: String = "F"
     var l3Key: String = "LShift"
     var r3Key: String = "V"
     var viewKey: String = "Tab"
-    var menuKey: String = "Esc"
+    var menuKey: String = "M"
     var nexusKey: String = "F12"
+    var ltKey: String = ""
+    var rtKey: String = ""
+    var leftClick: MouseButtonAction = .rt
+    var rightClick: MouseButtonAction = .lt
+    var middleClick: MouseButtonAction = .r3
+    var sideButton1: MouseButtonAction = .lb
+    var sideButton2: MouseButtonAction = .rb
+    var scrollAction: MouseScrollAction = .dpadLeftRight
+    var wasdDriveTriggers: Bool = false
+    var arrowsAsRightStick: Bool = false
+    var numberKeysAsDpad: Bool = true
+    var altSlowWalk: Bool = true
 
     static let keyChoices: [String] = [
-        "Space", "Enter", "Tab", "Esc", "LShift", "LCtrl", "LAlt", "Backspace",
-        "Q", "E", "R", "T", "F", "G", "Z", "X", "C", "V", "B", "1", "2", "3", "4", "F12",
+        "", "Space", "Enter", "Tab", "Esc", "LShift", "LCtrl", "LAlt", "Backspace",
+        "Q", "E", "R", "T", "F", "G", "Z", "X", "C", "V", "B", "M", "P",
+        "U", "I", "O", "J", "K", "L", "1", "2", "3", "4", "F12",
     ]
+
+    init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case aKey, bKey, xKey, yKey, lbKey, rbKey, l3Key, r3Key, viewKey, menuKey, nexusKey
+        case ltKey, rtKey, leftClick, rightClick, middleClick, sideButton1, sideButton2, scrollAction
+        case wasdDriveTriggers, arrowsAsRightStick, numberKeysAsDpad, altSlowWalk
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        aKey = try c.decodeIfPresent(String.self, forKey: .aKey) ?? "Space"
+        bKey = try c.decodeIfPresent(String.self, forKey: .bKey) ?? "C"
+        xKey = try c.decodeIfPresent(String.self, forKey: .xKey) ?? "R"
+        yKey = try c.decodeIfPresent(String.self, forKey: .yKey) ?? "E"
+        lbKey = try c.decodeIfPresent(String.self, forKey: .lbKey) ?? "Q"
+        rbKey = try c.decodeIfPresent(String.self, forKey: .rbKey) ?? "F"
+        l3Key = try c.decodeIfPresent(String.self, forKey: .l3Key) ?? "LShift"
+        r3Key = try c.decodeIfPresent(String.self, forKey: .r3Key) ?? "V"
+        viewKey = try c.decodeIfPresent(String.self, forKey: .viewKey) ?? "Tab"
+        menuKey = try c.decodeIfPresent(String.self, forKey: .menuKey) ?? "M"
+        nexusKey = try c.decodeIfPresent(String.self, forKey: .nexusKey) ?? "F12"
+        ltKey = try c.decodeIfPresent(String.self, forKey: .ltKey) ?? ""
+        rtKey = try c.decodeIfPresent(String.self, forKey: .rtKey) ?? ""
+        leftClick = try c.decodeIfPresent(MouseButtonAction.self, forKey: .leftClick) ?? .rt
+        rightClick = try c.decodeIfPresent(MouseButtonAction.self, forKey: .rightClick) ?? .lt
+        middleClick = try c.decodeIfPresent(MouseButtonAction.self, forKey: .middleClick) ?? .r3
+        sideButton1 = try c.decodeIfPresent(MouseButtonAction.self, forKey: .sideButton1) ?? .lb
+        sideButton2 = try c.decodeIfPresent(MouseButtonAction.self, forKey: .sideButton2) ?? .rb
+        scrollAction = try c.decodeIfPresent(MouseScrollAction.self, forKey: .scrollAction) ?? .dpadLeftRight
+        wasdDriveTriggers = try c.decodeIfPresent(Bool.self, forKey: .wasdDriveTriggers) ?? false
+        arrowsAsRightStick = try c.decodeIfPresent(Bool.self, forKey: .arrowsAsRightStick) ?? false
+        numberKeysAsDpad = try c.decodeIfPresent(Bool.self, forKey: .numberKeysAsDpad) ?? true
+        altSlowWalk = try c.decodeIfPresent(Bool.self, forKey: .altSlowWalk) ?? true
+    }
+
+    static func preset(_ preset: KMControlPreset) -> KeyboardBindingMap {
+        var m = KeyboardBindingMap()
+        switch preset {
+        case .fps:
+            m.aKey = "Space"
+            m.bKey = "C"
+            m.xKey = "R"
+            m.yKey = "E"
+            m.lbKey = "Q"
+            m.rbKey = "F"
+            m.l3Key = "LShift"
+            m.r3Key = "V"
+            m.viewKey = "Tab"
+            m.menuKey = "M"
+            m.leftClick = .rt
+            m.rightClick = .lt
+            m.middleClick = .r3
+            m.sideButton1 = .lb
+            m.sideButton2 = .rb
+            m.scrollAction = .dpadLeftRight
+            m.wasdDriveTriggers = false
+            m.arrowsAsRightStick = false
+            m.numberKeysAsDpad = true
+            m.altSlowWalk = true
+        case .actionRPG:
+            m.aKey = "F"
+            m.bKey = "Space"
+            m.xKey = "R"
+            m.yKey = "E"
+            m.lbKey = "LShift"
+            m.rbKey = "G"
+            m.l3Key = "C"
+            m.r3Key = "Q"
+            m.viewKey = "Tab"
+            m.menuKey = "M"
+            m.leftClick = .rb
+            m.rightClick = .lt
+            m.middleClick = .r3
+            m.sideButton1 = .rt
+            m.sideButton2 = .x
+            m.scrollAction = .dpadUpDown
+            m.wasdDriveTriggers = false
+            m.arrowsAsRightStick = false
+            m.numberKeysAsDpad = true
+            m.altSlowWalk = true
+        case .racing:
+            m.aKey = "Space"
+            m.bKey = "E"
+            m.xKey = "Q"
+            m.yKey = "R"
+            m.lbKey = "F"
+            m.rbKey = "C"
+            m.l3Key = "LShift"
+            m.r3Key = "V"
+            m.viewKey = "Tab"
+            m.menuKey = "M"
+            m.leftClick = .rt
+            m.rightClick = .lt
+            m.middleClick = .rb
+            m.sideButton1 = .x
+            m.sideButton2 = .b
+            m.scrollAction = .lbRb
+            m.wasdDriveTriggers = true
+            m.arrowsAsRightStick = false
+            m.numberKeysAsDpad = true
+            m.altSlowWalk = false
+        case .keyboardOnly:
+            m.aKey = "Space"
+            m.bKey = "C"
+            m.xKey = "J"
+            m.yKey = "K"
+            m.lbKey = "Q"
+            m.rbKey = "E"
+            m.ltKey = "U"
+            m.rtKey = "O"
+            m.l3Key = "LShift"
+            m.r3Key = "V"
+            m.viewKey = "Tab"
+            m.menuKey = "M"
+            m.leftClick = .rt
+            m.rightClick = .lt
+            m.middleClick = .r3
+            m.sideButton1 = .lb
+            m.sideButton2 = .rb
+            m.scrollAction = .dpadUpDown
+            m.wasdDriveTriggers = false
+            m.arrowsAsRightStick = true
+            m.numberKeysAsDpad = true
+            m.altSlowWalk = true
+        }
+        return m
+    }
+}
+
+enum MouseButtonAction: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
+    case none = "none"
+    case rt = "rt"
+    case lt = "lt"
+    case rb = "rb"
+    case lb = "lb"
+    case a = "a"
+    case b = "b"
+    case x = "x"
+    case y = "y"
+    case l3 = "l3"
+    case r3 = "r3"
+    case view = "view"
+    case menu = "menu"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .none: return "未映射"
+        case .rt: return "RT 右扳机"
+        case .lt: return "LT 左扳机"
+        case .rb: return "RB 右肩键"
+        case .lb: return "LB 左肩键"
+        case .a: return "A 键"
+        case .b: return "B 键"
+        case .x: return "X 键"
+        case .y: return "Y 键"
+        case .l3: return "L3 左摇杆按"
+        case .r3: return "R3 右摇杆按"
+        case .view: return "View 键"
+        case .menu: return "Menu 键"
+        }
+    }
+
+    var shortLabel: String {
+        switch self {
+        case .none: return "无"
+        case .rt: return "RT"
+        case .lt: return "LT"
+        case .rb: return "RB"
+        case .lb: return "LB"
+        case .a: return "A"
+        case .b: return "B"
+        case .x: return "X"
+        case .y: return "Y"
+        case .l3: return "L3"
+        case .r3: return "R3"
+        case .view: return "View"
+        case .menu: return "Menu"
+        }
+    }
+}
+
+enum MouseScrollAction: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
+    case off = "off"
+    case dpadLeftRight = "dpadLR"
+    case dpadUpDown = "dpadUD"
+    case lbRb = "lbRb"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .off: return "关闭滚轮"
+        case .dpadLeftRight: return "十字键 ←/→（切装备/武器）"
+        case .dpadUpDown: return "十字键 ↑/↓（切道具/法术）"
+        case .lbRb: return "LB / RB（切标签/菜单）"
+        }
+    }
+
+    var shortLabel: String {
+        switch self {
+        case .off: return "关"
+        case .dpadLeftRight: return "←/→"
+        case .dpadUpDown: return "↑/↓"
+        case .lbRb: return "LB/RB"
+        }
+    }
+}
+
+enum KMControlPreset: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
+    case fps = "fps"
+    case actionRPG = "actionRPG"
+    case racing = "racing"
+    case keyboardOnly = "keyboardOnly"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .fps: return "FPS 射击"
+        case .actionRPG: return "动作 / RPG"
+        case .racing: return "赛车竞速"
+        case .keyboardOnly: return "纯键盘双摇杆"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .fps: return "WASD 移动 · 鼠标瞄准 · 左键开火(RT) · 右键开镜(LT)"
+        case .actionRPG: return "左键轻攻(RB) · 右键格挡(LT) · 空格翻滚(B) · Q锁定(R3)"
+        case .racing: return "W油门(RT) · S刹车(LT) · A/D转向 · 空格手刹(A) · Q/E换挡"
+        case .keyboardOnly: return "无需鼠标：WASD左摇杆 · 方向键右摇杆 · U/O扳机 · 1-4十字键"
+        }
+    }
 }
 
 struct AppSettings: Codable, Equatable {
@@ -600,7 +849,12 @@ struct AppSettings: Codable, Equatable {
     var gyroSensitivity: Double = 1.0
     var gyroInvertY: Bool = false
     var keyboardMouseMode: KeyboardMouseMode = .gamepadEmulation
-    var mouseSensitivity: Double = 1.0
+    var kmPreset: KMControlPreset = .fps
+    var mouseSensitivity: Double = 1.5
+    var mouseAntiDeadzone: Double = 0.18
+    var mouseYScale: Double = 0.85
+    var mouseInvertY: Bool = false
+    var showKeymapHintHUD: Bool = true
     var virtualGamepadOpacity: Double = 0.58
     var virtualGamepadScale: Double = 1.0
     var virtualGamepadFloatingStick: Bool = false
@@ -638,7 +892,7 @@ struct AppSettings: Codable, Equatable {
         case autoReconnect, preferredLanguage, forceRegionIP, selectedHomeRegion, selectedCloudRegion
         case rumbleEnabled, handleRumbleStrength, triggerRumbleStrength, fallbackTriggerToHandles
         case stickDeadzone, leftStickDeadzone, rightStickDeadzone, stickResponseCurve, triggerDeadzone
-        case gyroAimMode, gyroSensitivity, gyroInvertY, keyboardMouseMode, mouseSensitivity
+        case gyroAimMode, gyroSensitivity, gyroInvertY, keyboardMouseMode, kmPreset, mouseSensitivity, mouseAntiDeadzone, mouseYScale, mouseInvertY, showKeymapHintHUD
         case virtualGamepadOpacity, virtualGamepadScale, virtualGamepadFloatingStick, virtualGamepadHapticTap, virtualGamepadOffsets
         case controlProfile, gamepadButtonMap, keyboardBindingMap
         case nintendoButtonLayout, micEchoCancellation, shadowLift, videoBrightness, videoContrast, videoSaturation
@@ -688,7 +942,13 @@ struct AppSettings: Codable, Equatable {
         gyroSensitivity = try c.decodeIfPresent(Double.self, forKey: .gyroSensitivity) ?? 1.0
         gyroInvertY = try c.decodeIfPresent(Bool.self, forKey: .gyroInvertY) ?? false
         keyboardMouseMode = try c.decodeIfPresent(KeyboardMouseMode.self, forKey: .keyboardMouseMode) ?? .gamepadEmulation
-        mouseSensitivity = try c.decodeIfPresent(Double.self, forKey: .mouseSensitivity) ?? 1.0
+        let decodedKMPreset = try c.decodeIfPresent(KMControlPreset.self, forKey: .kmPreset)
+        kmPreset = decodedKMPreset ?? .fps
+        mouseSensitivity = try c.decodeIfPresent(Double.self, forKey: .mouseSensitivity) ?? 1.5
+        mouseAntiDeadzone = try c.decodeIfPresent(Double.self, forKey: .mouseAntiDeadzone) ?? 0.18
+        mouseYScale = try c.decodeIfPresent(Double.self, forKey: .mouseYScale) ?? 0.85
+        mouseInvertY = try c.decodeIfPresent(Bool.self, forKey: .mouseInvertY) ?? false
+        showKeymapHintHUD = try c.decodeIfPresent(Bool.self, forKey: .showKeymapHintHUD) ?? true
         virtualGamepadOpacity = try c.decodeIfPresent(Double.self, forKey: .virtualGamepadOpacity) ?? 0.58
         virtualGamepadScale = try c.decodeIfPresent(Double.self, forKey: .virtualGamepadScale) ?? 1.0
         virtualGamepadFloatingStick = try c.decodeIfPresent(Bool.self, forKey: .virtualGamepadFloatingStick) ?? false
@@ -696,7 +956,12 @@ struct AppSettings: Codable, Equatable {
         virtualGamepadOffsets = try c.decodeIfPresent([String: [Double]].self, forKey: .virtualGamepadOffsets) ?? [:]
         controlProfile = try c.decodeIfPresent(ControlProfilePreset.self, forKey: .controlProfile) ?? .standard
         gamepadButtonMap = try c.decodeIfPresent(GamepadButtonMap.self, forKey: .gamepadButtonMap) ?? GamepadButtonMap()
-        keyboardBindingMap = try c.decodeIfPresent(KeyboardBindingMap.self, forKey: .keyboardBindingMap) ?? KeyboardBindingMap()
+        var decodedKB = try c.decodeIfPresent(KeyboardBindingMap.self, forKey: .keyboardBindingMap) ?? KeyboardBindingMap()
+        if decodedKMPreset == nil && decodedKB.menuKey == "Esc" {
+            // Migrate pre-v1.0.44 default Menu=Esc to M so macOS Esc cursor-unlock never conflicts
+            decodedKB.menuKey = "M"
+        }
+        keyboardBindingMap = decodedKB
         nintendoButtonLayout = try c.decodeIfPresent(NintendoButtonLayoutMode.self, forKey: .nintendoButtonLayout) ?? .auto
         micEchoCancellation = try c.decodeIfPresent(Bool.self, forKey: .micEchoCancellation) ?? true
         shadowLift = try c.decodeIfPresent(Double.self, forKey: .shadowLift) ?? 0.0

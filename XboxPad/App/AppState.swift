@@ -408,6 +408,28 @@ final class AppState: ObservableObject {
         showToast("已切换操控预设：\(preset.label)")
     }
 
+    func applyKMPreset(_ preset: KMControlPreset) {
+        settings.kmPreset = preset
+        settings.keyboardBindingMap = KeyboardBindingMap.preset(preset)
+        if settings.keyboardMouseMode == .off {
+            settings.keyboardMouseMode = .gamepadEmulation
+        }
+        switch preset {
+        case .fps:
+            settings.mouseAntiDeadzone = 0.18
+            settings.mouseYScale = 0.85
+        case .actionRPG:
+            settings.mouseAntiDeadzone = 0.18
+            settings.mouseYScale = 0.90
+        case .racing:
+            settings.mouseAntiDeadzone = 0.15
+            settings.mouseYScale = 0.85
+        case .keyboardOnly:
+            break
+        }
+        showToast("已切换键鼠方案：\(preset.label)")
+    }
+
     func quickLaunchFirstConsole() {
         guard isAuthenticated, activeStreamTarget == nil else { return }
         Task {

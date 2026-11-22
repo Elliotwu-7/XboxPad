@@ -379,4 +379,6 @@ extension Notification.Name {
     static let xboxpadToggleMic = Notification.Name("com.elliot.xboxpad.cmd.toggleMic")
     static let xboxpadCheckUpdates = Notification.Name("com.elliot.xboxpad.cmd.checkUpdates")
     static let xboxpadQuickLaunchConsole = Notification.Name("com.elliot.xboxpad.cmd.quickLaunchConsole")
+    static let xboxpadToggleKeymapHUD = Notification.Name("com.elliot.xboxpad.cmd.toggleKeymapHUD")
+    static let xboxpadPointerLockChanged = Notification.Name("com.elliot.xboxpad.cmd.pointerLockChanged")
 }

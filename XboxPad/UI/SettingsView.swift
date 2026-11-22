@@ -513,19 +513,65 @@ struct SettingsView: View {
 
             if appState.settings.keyboardMouseMode == .gamepadEmulation {
                 cardDivider
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("键鼠模拟自定义键位（WASD 固定移动）")
+                        Text("非键鼠游戏 · 键鼠模拟一键方案")
                             .font(.xbCaption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("重置键位") {
-                            appState.settings.keyboardBindingMap = KeyboardBindingMap()
+                        Button("恢复当前方案默认") {
+                            appState.applyKMPreset(appState.settings.kmPreset)
                         }
                         .font(.xbCaption2.weight(.semibold))
                         .foregroundStyle(XboxTheme.emeraldBright)
                         .buttonStyle(.plain)
                     }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(KMControlPreset.allCases) { preset in
+                                let active = appState.settings.kmPreset == preset
+                                Button {
+                                    appState.applyKMPreset(preset)
+                                } label: {
+                                    Text(preset.label)
+                                        .font(.xbCaption.weight(.semibold))
+                                        .foregroundStyle(active ? .black : .white.opacity(0.88))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            active ? AnyShapeStyle(XboxTheme.info) : AnyShapeStyle(Color.white.opacity(0.08)),
+                                            in: Capsule()
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    Text(appState.settings.kmPreset.summary)
+                        .font(.xbCaption)
+                        .foregroundStyle(.secondary)
+
+                    Text("鼠标按键与滚轮映射")
+                        .font(.xbCaption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                        mouseActionChip("鼠标左键", selection: $appState.settings.keyboardBindingMap.leftClick)
+                        mouseActionChip("鼠标右键", selection: $appState.settings.keyboardBindingMap.rightClick)
+                        mouseActionChip("鼠标中键", selection: $appState.settings.keyboardBindingMap.middleClick)
+                        mouseActionChip("鼠标侧键 1", selection: $appState.settings.keyboardBindingMap.sideButton1)
+                        mouseActionChip("鼠标侧键 2", selection: $appState.settings.keyboardBindingMap.sideButton2)
+                        mouseScrollChip("鼠标滚轮", selection: $appState.settings.keyboardBindingMap.scrollAction)
+                    }
+
+                    Text("键盘按键映射（Enter=A · 退格=B · F1=串流键位提示）")
+                        .font(.xbCaption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                         keyBindChip("A 键", keyName: $appState.settings.keyboardBindingMap.aKey)
                         keyBindChip("B 键", keyName: $appState.settings.keyboardBindingMap.bKey)
@@ -533,11 +579,32 @@ struct SettingsView: View {
                         keyBindChip("Y 键", keyName: $appState.settings.keyboardBindingMap.yKey)
                         keyBindChip("LB 肩键", keyName: $appState.settings.keyboardBindingMap.lbKey)
                         keyBindChip("RB 肩键", keyName: $appState.settings.keyboardBindingMap.rbKey)
+                        keyBindChip("LT 左扳机", keyName: $appState.settings.keyboardBindingMap.ltKey)
+                        keyBindChip("RT 右扳机", keyName: $appState.settings.keyboardBindingMap.rtKey)
                         keyBindChip("L3 冲刺", keyName: $appState.settings.keyboardBindingMap.l3Key)
-                        keyBindChip("R3 近战", keyName: $appState.settings.keyboardBindingMap.r3Key)
+                        keyBindChip("R3 近战/锁定", keyName: $appState.settings.keyboardBindingMap.r3Key)
                         keyBindChip("View 键", keyName: $appState.settings.keyboardBindingMap.viewKey)
-                        keyBindChip("Menu 键", keyName: $appState.settings.keyboardBindingMap.menuKey)
+                        keyBindChip("Menu 菜单", keyName: $appState.settings.keyboardBindingMap.menuKey)
                     }
+
+                    VStack(spacing: 8) {
+                        Toggle("数字键 1/2/3/4 映射十字键（无需松开 WASD）", isOn: $appState.settings.keyboardBindingMap.numberKeysAsDpad)
+                            .font(.xbCaption.weight(.medium))
+                            .tint(XboxTheme.emerald)
+                        Toggle("按住左 Alt 键慢走（左摇杆降速至 45%）", isOn: $appState.settings.keyboardBindingMap.altSlowWalk)
+                            .font(.xbCaption.weight(.medium))
+                            .tint(XboxTheme.emerald)
+                        Toggle("赛车油门模式（W=RT 油门 · S=LT 刹车 · A/D 转向）", isOn: $appState.settings.keyboardBindingMap.wasdDriveTriggers)
+                            .font(.xbCaption.weight(.medium))
+                            .tint(XboxTheme.emerald)
+                        Toggle("方向键控制右摇杆视角（无鼠标纯键盘模式）", isOn: $appState.settings.keyboardBindingMap.arrowsAsRightStick)
+                            .font(.xbCaption.weight(.medium))
+                            .tint(XboxTheme.emerald)
+                        Toggle("串流底部显示实时键位提示条（按 F1 快速切换）", isOn: $appState.settings.showKeymapHintHUD)
+                            .font(.xbCaption.weight(.medium))
+                            .tint(XboxTheme.info)
+                    }
+                    .padding(.top, 4)
                 }
             }
         }
@@ -577,15 +644,71 @@ struct SettingsView: View {
             Spacer()
             Menu {
                 ForEach(KeyboardBindingMap.keyChoices, id: \.self) { key in
-                    Button(key) { keyName.wrappedValue = key }
+                    Button(key.isEmpty ? "未绑定" : key) { keyName.wrappedValue = key }
                 }
             } label: {
-                Text(keyName.wrappedValue)
+                Text(keyName.wrappedValue.isEmpty ? "未绑定" : keyName.wrappedValue)
                     .font(.xbCaption.monospaced().bold())
-                    .foregroundStyle(XboxTheme.info)
+                    .foregroundStyle(keyName.wrappedValue.isEmpty ? .secondary : XboxTheme.info)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
                     .background(XboxTheme.info.opacity(0.14), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            #if os(macOS)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            #endif
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func mouseActionChip(_ title: String, selection: Binding<MouseButtonAction>) -> some View {
+        HStack {
+            Text(title)
+                .font(.xbCaption.weight(.medium))
+                .foregroundStyle(.white.opacity(0.82))
+            Spacer()
+            Menu {
+                ForEach(MouseButtonAction.allCases) { act in
+                    Button(act.label) { selection.wrappedValue = act }
+                }
+            } label: {
+                Text(selection.wrappedValue.shortLabel)
+                    .font(.xbCaption.bold())
+                    .foregroundStyle(XboxTheme.emeraldBright)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(XboxTheme.emerald.opacity(0.16), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            #if os(macOS)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            #endif
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func mouseScrollChip(_ title: String, selection: Binding<MouseScrollAction>) -> some View {
+        HStack {
+            Text(title)
+                .font(.xbCaption.weight(.medium))
+                .foregroundStyle(.white.opacity(0.82))
+            Spacer()
+            Menu {
+                ForEach(MouseScrollAction.allCases) { act in
+                    Button(act.label) { selection.wrappedValue = act }
+                }
+            } label: {
+                Text(selection.wrappedValue.shortLabel)
+                    .font(.xbCaption.bold())
+                    .foregroundStyle(.cyan)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Color.cyan.opacity(0.16), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             #if os(macOS)
             .menuStyle(.borderlessButton)
@@ -698,12 +821,42 @@ struct SettingsView: View {
                     valueText: String(format: "%.1f×", appState.settings.mouseSensitivity),
                     tint: XboxTheme.info,
                     value: $appState.settings.mouseSensitivity,
-                    range: 0.2...3.0,
+                    range: 0.2...6.0,
                     step: 0.1
                 )
 
                 if appState.settings.keyboardMouseMode == .gamepadEmulation {
-                    Text("模拟键位：WASD 移动 · 鼠标转视角 · 左/右键 RT/LT · 空格 A · C/Ctrl B · R X · E/F Y · Q/G LB/RB · Shift 冲刺 · Tab View · Esc Menu · F12 西瓜键")
+                    cardDivider
+                    sliderRow(
+                        title: "游戏右摇杆死区补偿（微调起转）",
+                        valueText: "\(Int((appState.settings.mouseAntiDeadzone * 100).rounded()))%",
+                        tint: XboxTheme.emeraldBright,
+                        value: $appState.settings.mouseAntiDeadzone,
+                        range: 0.0...0.35,
+                        step: 0.01
+                    )
+                }
+
+                cardDivider
+                sliderRow(
+                    title: "垂直视角灵敏度比例 (Y / X)",
+                    valueText: String(format: "%.2f×", appState.settings.mouseYScale),
+                    tint: .cyan,
+                    value: $appState.settings.mouseYScale,
+                    range: 0.4...1.5,
+                    step: 0.05
+                )
+
+                cardDivider
+                toggleRow(
+                    title: "反转鼠标上下视角 (Y 轴)",
+                    icon: "arrow.up.arrow.down",
+                    color: XboxTheme.info,
+                    isOn: $appState.settings.mouseInvertY
+                )
+
+                if appState.settings.keyboardMouseMode == .gamepadEmulation {
+                    Text("提示：串流顶部控制栏点击「键鼠」可边玩边调灵敏度与死区补偿，按 F1 随时隐显底部键位提示；macOS 支持外接鼠标与 MacBook 触控板，点击画面锁定光标、按 Esc 解锁。")
                         .font(.xbCaption)
                         .foregroundStyle(.secondary)
                         .padding(10)

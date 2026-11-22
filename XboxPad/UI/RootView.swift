@@ -105,8 +105,9 @@ struct RootView: View {
         .xboxStreamPresentation(item: $appState.activeStreamTarget) { target in
             StreamEventContainerView(
                 lockPointer: appState.settings.keyboardMouseMode != .off
-                    && appState.gamepadManager.telemetry.mouseConnected
-                    && !appState.isStreamOverlayOpen
+                    && (XboxPlatform.isMac || appState.gamepadManager.telemetry.mouseConnected)
+                    && !appState.isStreamOverlayOpen,
+                gamepadManager: appState.gamepadManager
             ) {
                 StreamPlayerView(
                     target: target,
@@ -186,10 +187,12 @@ struct RootView: View {
 /// routes raw controller inputs (including overridden Home/Guide presses) directly to XboxPad.
 private struct StreamEventContainerView<Content: View>: UIViewControllerRepresentable {
     let lockPointer: Bool
+    let gamepadManager: GamepadManager
     let content: Content
 
-    init(lockPointer: Bool = false, @ViewBuilder content: () -> Content) {
+    init(lockPointer: Bool = false, gamepadManager: GamepadManager, @ViewBuilder content: () -> Content) {
         self.lockPointer = lockPointer
+        self.gamepadManager = gamepadManager
         self.content = content()
     }
 
@@ -257,15 +260,17 @@ private final class StreamGCEventViewController<Content: View>: GCEventViewContr
 /// so controllers & Home button route directly to XboxPad without triggering macOS UI navigation.
 private struct StreamEventContainerView<Content: View>: NSViewControllerRepresentable {
     let lockPointer: Bool
+    let gamepadManager: GamepadManager
     let content: Content
 
-    init(lockPointer: Bool = false, @ViewBuilder content: () -> Content) {
+    init(lockPointer: Bool = false, gamepadManager: GamepadManager, @ViewBuilder content: () -> Content) {
         self.lockPointer = lockPointer
+        self.gamepadManager = gamepadManager
         self.content = content()
     }
 
     func makeNSViewController(context: Context) -> StreamGCEventNSViewController<Content> {
-        StreamGCEventNSViewController(rootView: content, lockPointer: lockPointer)
+        StreamGCEventNSViewController(rootView: content, lockPointer: lockPointer, gamepadManager: gamepadManager)
     }
 
     func updateNSViewController(_ nsViewController: StreamGCEventNSViewController<Content>, context: Context) {
@@ -277,16 +282,18 @@ private struct StreamEventContainerView<Content: View>: NSViewControllerRepresen
 
 private final class StreamGCEventNSViewController<Content: View>: GCEventViewController {
     private let hostingController: NSHostingController<Content>
+    private let gamepadManager: GamepadManager
     private var keyEventMonitor: Any?
-    private var mouseClickMonitor: Any?
+    private var mouseEventMonitor: Any?
     private var windowObservers: [NSObjectProtocol] = []
     private var shouldLockPointer: Bool
     private var isPointerLocked = false
     private var isCursorHidden = false
 
-    init(rootView: Content, lockPointer: Bool) {
+    init(rootView: Content, lockPointer: Bool, gamepadManager: GamepadManager) {
         self.hostingController = NSHostingController(rootView: rootView)
         self.shouldLockPointer = lockPointer
+        self.gamepadManager = gamepadManager
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -343,9 +350,24 @@ private final class StreamGCEventNSViewController<Content: View>: GCEventViewCon
         }
     }
 
+    private func warpCursorToStreamCenter() {
+        guard let win = view.window, let screen = win.screen ?? NSScreen.main else { return }
+        let viewRectInWin = view.convert(view.bounds, to: nil)
+        let screenRect = win.convertToScreen(viewRectInWin)
+        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
+        let centerX = screenRect.midX
+        let centerY = primaryMaxY - screenRect.midY
+        CGWarpMouseCursorPosition(CGPoint(x: centerX, y: centerY))
+    }
+
     private func applyPointerLock(_ locked: Bool) {
         guard isPointerLocked != locked else { return }
         isPointerLocked = locked
+        if locked {
+            warpCursorToStreamCenter()
+        } else {
+            gamepadManager.clearPlatformMouseState()
+        }
         CGAssociateMouseAndMouseCursorPosition(locked ? 0 : 1)
         if locked && !isCursorHidden {
             NSCursor.hide()
@@ -354,11 +376,12 @@ private final class StreamGCEventNSViewController<Content: View>: GCEventViewCon
             NSCursor.unhide()
             isCursorHidden = false
         }
+        NotificationCenter.default.post(name: .xboxpadPointerLockChanged, object: locked)
     }
 
     /// Consume regular gameplay keystrokes in AppKit's responder chain so macOS never plays
     /// the unhandled-key system alert beep ("嘟嘟嘟") while GCKeyboard delivers raw keys to Xbox.
-    /// Also manages true FPS mouse lock/unlock (click canvas to lock, Esc to release cursor + open bar).
+    /// Also routes raw pointer-locked mouse & trackpad deltas/clicks/scroll directly to GamepadManager.
     private func installEventMonitors() {
         if keyEventMonitor == nil {
             keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
@@ -371,35 +394,133 @@ private final class StreamGCEventNSViewController<Content: View>: GCEventViewCon
                 if win.attachedSheet != nil || win.firstResponder is NSTextView {
                     return event
                 }
+                // F1 toggles in-stream Keymap Hint HUD cleanly
+                if event.type == .keyDown && event.keyCode == 122 {
+                    NotificationCenter.default.post(name: .xboxpadToggleKeymapHUD, object: nil)
+                    return nil
+                }
                 // Esc while pointer is locked releases cursor cleanly & opens top bar
                 if event.type == .keyDown && event.keyCode == 53 && self.isPointerLocked {
                     self.applyPointerLock(false)
                     NotificationCenter.default.post(name: .xboxpadToggleOverlay, object: nil)
                     return nil
                 }
+                // Fallback keyboard injection if GCKeyboard.coalesced is unavailable on this Mac
+                if GCKeyboard.coalesced == nil, let gcKey = Self.macKeyCodeToGCKeyCode(event.keyCode) {
+                    self.gamepadManager.injectPlatformKey(gcKey, pressed: event.type == .keyDown)
+                }
                 return nil
             }
         }
 
-        if mouseClickMonitor == nil {
-            mouseClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+        if mouseEventMonitor == nil {
+            let mask: NSEvent.EventTypeMask = [
+                .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
+                .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
+                .otherMouseDown, .otherMouseUp, .scrollWheel,
+            ]
+            mouseEventMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
                 guard let self,
-                      self.shouldLockPointer,
-                      !self.isPointerLocked,
                       let win = self.view.window,
-                      event.window === win,
                       win.isKeyWindow,
                       win.attachedSheet == nil else {
                     return event
                 }
-                let locInView = self.view.convert(event.locationInWindow, from: nil)
-                // Keep top 54pt zone clickable for opening the overlay bar without relocking
-                let distFromTop = self.view.bounds.maxY - locInView.y
-                if self.view.bounds.contains(locInView) && distFromTop > 54 {
-                    self.applyPointerLock(true)
+
+                if self.isPointerLocked {
+                    switch event.type {
+                    case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+                        let dx = Float(event.deltaX)
+                        let dy = Float(-event.deltaY) // AppKit +Y is down; GamepadManager +Y is up
+                        if abs(dx) > 0.0001 || abs(dy) > 0.0001 {
+                            self.gamepadManager.injectPlatformMouseDelta(dx: dx, dy: dy)
+                        }
+                        return nil
+                    case .leftMouseDown:
+                        self.gamepadManager.injectPlatformMouseButton(buttonIndex: 0, pressed: true)
+                        return nil
+                    case .leftMouseUp:
+                        self.gamepadManager.injectPlatformMouseButton(buttonIndex: 0, pressed: false)
+                        return nil
+                    case .rightMouseDown:
+                        self.gamepadManager.injectPlatformMouseButton(buttonIndex: 1, pressed: true)
+                        return nil
+                    case .rightMouseUp:
+                        self.gamepadManager.injectPlatformMouseButton(buttonIndex: 1, pressed: false)
+                        return nil
+                    case .otherMouseDown:
+                        self.gamepadManager.injectPlatformMouseButton(buttonIndex: event.buttonNumber, pressed: true)
+                        return nil
+                    case .otherMouseUp:
+                        self.gamepadManager.injectPlatformMouseButton(buttonIndex: event.buttonNumber, pressed: false)
+                        return nil
+                    case .scrollWheel:
+                        self.gamepadManager.injectPlatformMouseScroll(
+                            dx: Float(event.scrollingDeltaX),
+                            dy: Float(event.scrollingDeltaY)
+                        )
+                        return nil
+                    default:
+                        return event
+                    }
+                } else if event.type == .leftMouseDown,
+                          self.shouldLockPointer,
+                          event.window === win {
+                    let locInView = self.view.convert(event.locationInWindow, from: nil)
+                    let distFromTop = self.view.bounds.maxY - locInView.y
+                    // Keep top 54pt zone clickable for opening the overlay bar without relocking
+                    if self.view.bounds.contains(locInView) && distFromTop > 54 {
+                        self.applyPointerLock(true)
+                        return nil // Consume the locking click so it doesn't accidentally fire a shot
+                    }
                 }
                 return event
             }
+        }
+    }
+
+    private static func macKeyCodeToGCKeyCode(_ keyCode: UInt16) -> GCKeyCode? {
+        switch keyCode {
+        case 0: return .keyA
+        case 1: return .keyS
+        case 2: return .keyD
+        case 3: return .keyF
+        case 4: return .keyH
+        case 5: return .keyG
+        case 6: return .keyZ
+        case 7: return .keyX
+        case 8: return .keyC
+        case 9: return .keyV
+        case 11: return .keyB
+        case 12: return .keyQ
+        case 13: return .keyW
+        case 14: return .keyE
+        case 15: return .keyR
+        case 16: return .keyY
+        case 17: return .keyT
+        case 18: return .one
+        case 19: return .two
+        case 20: return .three
+        case 21: return .four
+        case 31: return .keyO
+        case 32: return .keyU
+        case 34: return .keyI
+        case 35: return .keyP
+        case 36: return .returnOrEnter
+        case 37: return .keyL
+        case 38: return .keyJ
+        case 40: return .keyK
+        case 46: return .keyM
+        case 48: return .tab
+        case 49: return .spacebar
+        case 51: return .deleteOrBackspace
+        case 53: return .escape
+        case 111: return .F12
+        case 123: return .leftArrow
+        case 124: return .rightArrow
+        case 125: return .downArrow
+        case 126: return .upArrow
+        default: return nil
         }
     }
 
@@ -408,9 +529,9 @@ private final class StreamGCEventNSViewController<Content: View>: GCEventViewCon
             NSEvent.removeMonitor(monitor)
             keyEventMonitor = nil
         }
-        if let monitor = mouseClickMonitor {
+        if let monitor = mouseEventMonitor {
             NSEvent.removeMonitor(monitor)
-            mouseClickMonitor = nil
+            mouseEventMonitor = nil
         }
     }
 
