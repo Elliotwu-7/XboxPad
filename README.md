@@ -19,6 +19,7 @@
   <a href="sidestore://source?url=https://xbox.lynkco.site/source.json">一键添加到 SideStore</a> ·
   <a href="https://xbox.lynkco.site/source.json">SideStore 订阅源</a> ·
   <a href="#公网穿透与自建-stun--turn-配置指南">自建 STUN / TURN 指南</a> ·
+  <a href="#支持与打赏">赞助打赏</a> ·
   <a href="https://linux.do">LINUX DO 社区</a>
 </p>
 
@@ -126,6 +127,17 @@ sudo systemctl enable --now coturn
 ## 小贴士：开启实体手柄西瓜键（Xbox Home）接管
 
 连接手柄后，前往 iPadOS **设置 → 通用 → 游戏手柄 → 主屏幕按钮**，开启 **「主屏幕按钮覆盖」**，串流时按下手柄西瓜键即可直接呼出 Xbox 主机菜单，不再误跳 Apple Games。
+
+---
+
+## 支持与打赏
+
+XboxPad 永久免费、无广告、无内购，并以 AGPL-3.0 协议开源。如果它让你在 iPad、iPhone 或 Mac 上畅玩 Xbox 的体验更进一步，欢迎点一颗 **Star ★**，或自愿扫码请作者喝杯咖啡，支持项目持续迭代与官方中继带宽维护：
+
+<p align="center">
+  <img src="docs/promo/donate-alipay.png" alt="支付宝打赏二维码" width="220" /><br />
+  <sub>支付宝扫一扫 · 金额随意，感谢支持</sub>
+</p>
 
 ---
 

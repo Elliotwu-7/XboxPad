@@ -111,6 +111,9 @@ UPLOAD_FILES=("$IPA_PATH" "$ICON_PATH" "$TMP_DIR/source.json")
 if [ -f "$ROOT_DIR/docs/web/index.html" ]; then
   UPLOAD_FILES+=("$ROOT_DIR/docs/web/index.html")
 fi
+if [ -f "$ROOT_DIR/docs/web/donate-alipay.png" ]; then
+  UPLOAD_FILES+=("$ROOT_DIR/docs/web/donate-alipay.png")
+fi
 DMG_FILENAME=""
 if [ -n "$MACOS_DMG_PATH" ] && [ -f "$MACOS_DMG_PATH" ]; then
   DMG_FILENAME="XboxPad-${VERSION}-macOS.dmg"
@@ -127,6 +130,7 @@ ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$REMOTE_HOST" "
   mv -f AppIcon.png icon.png
   chmod 644 '${IPA_FILENAME}' icon.png source.json
   [ -f index.html ] && chmod 644 index.html || true
+  [ -f donate-alipay.png ] && chmod 644 donate-alipay.png || true
   ln -sf '${IPA_FILENAME}' XboxPad-latest.ipa
   # Keep at most 3 recent versioned IPAs
   ls -t XboxPad-*.ipa | grep -v 'XboxPad-latest.ipa' | grep -v 'macOS' | tail -n +4 | xargs -r rm -f
@@ -153,6 +157,9 @@ curl -fsSI "${BASE_URL}/" | head -n 6
 curl -fsSI "${BASE_URL}/source.json" | head -n 6
 curl -fsSI "${BASE_URL}/${IPA_FILENAME}" | head -n 6
 curl -fsSI "${BASE_URL}/icon.png" | head -n 6
+if [ -f "$ROOT_DIR/docs/web/donate-alipay.png" ]; then
+  curl -fsSI "${BASE_URL}/donate-alipay.png" | head -n 6
+fi
 if [ -n "$DMG_FILENAME" ]; then
   curl -fsSI "${BASE_URL}/XboxPad-macOS-latest.dmg" | head -n 6
 fi

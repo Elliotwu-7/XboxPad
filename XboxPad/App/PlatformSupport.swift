@@ -231,6 +231,90 @@ enum XboxPlatform {
         }
         #endif
     }
+
+    static let alipayDonateQRURL = "https://qr.alipay.com/fkx16378zrz7k1rxaimfxbc"
+
+    /// Save a bundled asset image (such as the Alipay sponsorship QR code) to Photos on iOS/iPadOS
+    /// or `~/Pictures/XboxPad/` on macOS so users can scan from album when needed.
+    static func saveBundledImage(
+        named assetName: String,
+        filename: String,
+        successLabel: String,
+        completion: @escaping @Sendable (Bool, String) -> Void
+    ) {
+        #if os(iOS)
+        guard let image = UIImage(named: assetName) else {
+            completion(false, "未找到内置图片资源")
+            return
+        }
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            guard status == .authorized || status == .limited else {
+                completion(false, "请在系统设置中允许 XboxPad 写入相册")
+                return
+            }
+            PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            } completionHandler: { success, error in
+                if success {
+                    completion(true, "\(successLabel)已存入相册，可在支付宝「扫一扫 → 相册」识别")
+                } else {
+                    completion(false, "保存失败：\(error?.localizedDescription ?? "未知错误")")
+                }
+            }
+        }
+        #elseif os(macOS)
+        guard let nsImage = NSImage(named: assetName),
+              let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            completion(false, "未找到内置图片资源")
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fm = FileManager.default
+            let baseDir = fm.urls(for: .picturesDirectory, in: .userDomainMask).first
+                ?? fm.urls(for: .desktopDirectory, in: .userDomainMask).first
+                ?? fm.homeDirectoryForCurrentUser
+            let outDir = baseDir.appendingPathComponent("XboxPad", isDirectory: true)
+            do {
+                try fm.createDirectory(at: outDir, withIntermediateDirectories: true)
+            } catch {
+                completion(false, "无法创建保存目录：\(error.localizedDescription)")
+                return
+            }
+            let outURL = outDir.appendingPathComponent(filename)
+            guard let dest = CGImageDestinationCreateWithURL(
+                outURL as CFURL,
+                UTType.png.identifier as CFString,
+                1,
+                nil
+            ) else {
+                completion(false, "无法创建 PNG 文件")
+                return
+            }
+            CGImageDestinationAddImage(dest, cgImage, nil)
+            if CGImageDestinationFinalize(dest) {
+                completion(true, "\(successLabel)已存至 图片/XboxPad/\(filename)")
+            } else {
+                completion(false, "PNG 写入失败")
+            }
+        }
+        #endif
+    }
+
+    #if os(iOS)
+    @MainActor
+    static func openAlipayDonate() {
+        let encoded = alipayDonateQRURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? alipayDonateQRURL
+        if let appURL = URL(string: "alipays://platformapi/startapp?saId=10000007&qrcode=\(encoded)") {
+            UIApplication.shared.open(appURL) { opened in
+                if !opened, let webURL = URL(string: alipayDonateQRURL) {
+                    UIApplication.shared.open(webURL)
+                }
+            }
+        } else if let webURL = URL(string: alipayDonateQRURL) {
+            UIApplication.shared.open(webURL)
+        }
+    }
+    #endif
 }
 
 extension View {

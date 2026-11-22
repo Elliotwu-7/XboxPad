@@ -26,6 +26,7 @@ struct SettingsView: View {
     @State private var selectedCategory: SettingsCategory
     @State private var showLogoutConfirm = false
     @State private var showCustomIceEditor = false
+    @State private var showDonateSheet = false
 
     init(
         gamepadManager: GamepadManager,
@@ -71,6 +72,7 @@ struct SettingsView: View {
                             networkRelayCard
                         case .account:
                             accountSyncCard
+                            sponsorCard
                             aboutCard
                         }
                     }
@@ -103,6 +105,9 @@ struct SettingsView: View {
                        ? "将清除本机及 iCloud 钥匙串中保存的微软登录凭证。"
                        : "将清除本地 Keychain 保存的微软登录凭证。")
             )
+        }
+        .sheet(isPresented: $showDonateSheet) {
+            donateSheetView
         }
     }
 
@@ -1509,6 +1514,161 @@ struct SettingsView: View {
             )
             #endif
         }
+    }
+
+    private var sponsorCard: some View {
+        let alipayBlue = Color(red: 0.09, green: 0.47, blue: 1.0)
+        return settingsCard(
+            title: "支持开源 · 捐赠打赏",
+            icon: "cup.and.saucer.fill",
+            tint: XboxTheme.warning,
+            footer: "XboxPad 永久免费、无广告、无内购，遵循 AGPL-3.0 协议开源。所有打赏均自愿，用于支持后续版本维护与官方加速中继带宽。"
+        ) {
+            HStack(spacing: 12) {
+                XboxIconBadge(systemName: "heart.fill", color: XboxTheme.warning, size: 36)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("请作者喝杯咖啡")
+                        .font(.xbHeadline)
+                        .foregroundStyle(.white)
+                    Text("如果 XboxPad 让你玩 Xbox 更畅快，欢迎扫码支持持续开发")
+                        .font(.xbCaption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+            }
+
+            Button {
+                showDonateSheet = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "qrcode")
+                        .font(.xbSubheadline.weight(.bold))
+                    Text("支付宝打赏支持")
+                        .font(.xbSubheadline.weight(.bold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(alipayBlue, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var donateSheetView: some View {
+        let alipayBlue = Color(red: 0.09, green: 0.47, blue: 1.0)
+        let qrSize: CGFloat = XboxPlatform.isPhone ? 210 : 240
+        return ZStack {
+            XboxAmbientBackground(intensity: 0.85)
+
+            VStack(spacing: 18) {
+                HStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: "cup.and.saucer.fill")
+                            .font(.xbSubheadline.bold())
+                            .foregroundStyle(XboxTheme.warning)
+                        Text("支持 XboxPad 开源开发")
+                            .font(.xbHeadline)
+                            .foregroundStyle(.white)
+                    }
+                    Spacer()
+                    Button {
+                        showDonateSheet = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.xbCaption.bold())
+                            .foregroundStyle(.white.opacity(0.85))
+                            .frame(width: 30, height: 30)
+                            .background(Color.white.opacity(0.10), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                VStack(spacing: 12) {
+                    VStack(spacing: 10) {
+                        Image("AlipayDonateQR")
+                            .resizable()
+                            .interpolation(.none)
+                            .scaledToFit()
+                            .frame(width: qrSize, height: qrSize)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.xbCaption.bold())
+                                .foregroundStyle(alipayBlue)
+                            Text("支付宝扫一扫 · 金额随意")
+                                .font(.xbCaption.weight(.semibold))
+                                .foregroundStyle(Color(red: 0.12, green: 0.16, blue: 0.22))
+                        }
+                    }
+                    .padding(18)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .shadow(color: Color.black.opacity(0.42), radius: 22, y: 10)
+
+                    Text("感谢每一位支持开源社区的朋友！你的鼓励让 XboxPad 持续进化。")
+                        .font(.xbCaption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                }
+
+                VStack(spacing: 10) {
+                    #if os(iOS)
+                    Button {
+                        XboxPlatform.openAlipayDonate()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.up.forward.app.fill")
+                                .font(.xbSubheadline.bold())
+                            Text("一键在支付宝中打开")
+                                .font(.xbSubheadline.weight(.bold))
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(alipayBlue, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    #endif
+
+                    Button {
+                        XboxPlatform.saveBundledImage(
+                            named: "AlipayDonateQR",
+                            filename: "XboxPad-Alipay-Donate.png",
+                            successLabel: "支付宝收款码"
+                        ) { _, message in
+                            Task { @MainActor in
+                                appState.showToast(message)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.xbSubheadline.weight(.semibold))
+                            Text(XboxPlatform.isMac ? "保存二维码到图片文件夹" : "保存二维码到相册")
+                                .font(.xbSubheadline.weight(.semibold))
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(24)
+        }
+        #if os(macOS)
+        .frame(minWidth: 420, idealWidth: 440, minHeight: 500, idealHeight: 520)
+        #else
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        #endif
     }
 
     private var aboutCard: some View {
