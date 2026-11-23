@@ -738,7 +738,7 @@ final class NanoStreamSession: ObservableObject {
         let stereo = settings.stereoAudio
         let coopEnabled = gamepadManager.connectedControllers.count > 1
         let effectiveNetworkMode: UInt8 = (forceIPv4RetryOnce && settings.networkMode == .auto)
-            ? UInt8(StreamNetworkMode.ipv4Only.rawValue)
+            ? UInt8(NetworkStackMode.ipv4Only.rawValue)
             : UInt8(settings.networkMode.rawValue)
         if forceIPv4RetryOnce && settings.networkMode == .auto {
             nanoLogger.info("ICE fallback retry active: forcing IPv4-only STUN/TURN mode for this attempt")
