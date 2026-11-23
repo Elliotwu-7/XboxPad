@@ -377,13 +377,21 @@ async fn run_session(
         remote_candidates.len()
     );
     for candidate in remote_candidates {
-        peer.add_remote_candidate(&candidate).await?;
+        if let Err(error) = peer.add_remote_candidate(&candidate).await {
+            crate::nano_warn!(
+                "skip invalid remote candidate mid={} mline={}: {}",
+                candidate.sdp_mid,
+                candidate.sdp_mline_index,
+                error
+            );
+            continue;
+        }
         session.record_remote_candidate(candidate)?;
     }
     emit_status(
         config.event_sink.as_ref(),
         "ice-exchanged",
-        "ICE 通道已建立，等待视频流...",
+        "已交换 ICE 候选，正在穿透建立连接...",
         false,
     );
 

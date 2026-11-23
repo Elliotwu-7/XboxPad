@@ -150,8 +150,10 @@ final class NanoStreamSession: ObservableObject {
     private var reconnectAttempt = 0
     private let maxReconnectAttempts = 5
     private var reconnectTask: Task<Void, Never>?
+    private var iceConnectWatchdogTask: Task<Void, Never>?
     private var disconnectWatchdogTask: Task<Void, Never>?
     private var stallWatchdogTask: Task<Void, Never>?
+    private var forceIPv4RetryOnce = false
     private var toastClearTask: Task<Void, Never>?
     private var recordingTimerTask: Task<Void, Never>?
     private var foregroundObserver: NSObjectProtocol?
@@ -187,8 +189,11 @@ final class NanoStreamSession: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.reconnectAttempt = 0
+                self.forceIPv4RetryOnce = false
                 self.lastVideoFrameTimestamp = CACurrentMediaTime()
                 self.stallSoftRecovered = false
+                self.iceConnectWatchdogTask?.cancel()
+                self.iceConnectWatchdogTask = nil
                 self.disconnectWatchdogTask?.cancel()
                 self.connectionState = .streaming
                 self.startStallWatchdog()
@@ -236,7 +241,10 @@ final class NanoStreamSession: ObservableObject {
     func start() {
         isStoppedByUser = false
         reconnectAttempt = 0
+        forceIPv4RetryOnce = false
         reconnectTask?.cancel()
+        iceConnectWatchdogTask?.cancel()
+        iceConnectWatchdogTask = nil
         disconnectWatchdogTask?.cancel()
         stallWatchdogTask?.cancel()
         latencyHistory.removeAll(keepingCapacity: true)
@@ -295,6 +303,8 @@ final class NanoStreamSession: ObservableObject {
         isStoppedByUser = true
         reconnectTask?.cancel()
         reconnectTask = nil
+        iceConnectWatchdogTask?.cancel()
+        iceConnectWatchdogTask = nil
         disconnectWatchdogTask?.cancel()
         disconnectWatchdogTask = nil
         stallWatchdogTask?.cancel()
@@ -341,7 +351,10 @@ final class NanoStreamSession: ObservableObject {
     func reconnectManually() {
         isStoppedByUser = false
         reconnectAttempt = 0
+        forceIPv4RetryOnce = false
         reconnectTask?.cancel()
+        iceConnectWatchdogTask?.cancel()
+        iceConnectWatchdogTask = nil
         disconnectWatchdogTask?.cancel()
         teardownRustHandleOnly()
         videoRenderer.resetForReconnect()
@@ -724,7 +737,13 @@ final class NanoStreamSession: ObservableObject {
         let resolution = Int32(settings.resolution.rawValue)
         let stereo = settings.stereoAudio
         let coopEnabled = gamepadManager.connectedControllers.count > 1
-        let networkMode = UInt8(settings.networkMode.rawValue)
+        let effectiveNetworkMode: UInt8 = (forceIPv4RetryOnce && settings.networkMode == .auto)
+            ? UInt8(StreamNetworkMode.ipv4Only.rawValue)
+            : UInt8(settings.networkMode.rawValue)
+        if forceIPv4RetryOnce && settings.networkMode == .auto {
+            nanoLogger.info("ICE fallback retry active: forcing IPv4-only STUN/TURN mode for this attempt")
+        }
+        let networkMode = effectiveNetworkMode
         let maxDelay = UInt32(settings.latencyProfile.rawValue)
         let maxBitrateKbps = UInt32(max(settings.customMaxBitrateMbps, 0) * 1000)
 
@@ -774,6 +793,8 @@ final class NanoStreamSession: ObservableObject {
     }
 
     private func teardownRustHandleOnly() {
+        iceConnectWatchdogTask?.cancel()
+        iceConnectWatchdogTask = nil
         let oldHandle = handleBox.take()
         let oldCtx = callbackContext
         callbackContext = nil
@@ -793,16 +814,57 @@ final class NanoStreamSession: ObservableObject {
     private func handleRustStatus(stage: String, message: String, terminal: Bool) {
         guard !isStoppedByUser else { return }
 
+        if stage == "ice-exchanged" {
+            if case .streaming = connectionState { return }
+            connectionState = .connecting(message.isEmpty ? "已交换 ICE 候选，正在穿透建立连接..." : message)
+            iceConnectWatchdogTask?.cancel()
+            iceConnectWatchdogTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 14_000_000_000)
+                guard let self, !Task.isCancelled, !self.isStoppedByUser else { return }
+                if case .streaming = self.connectionState { return }
+                nanoLogger.warning("ICE connect watchdog fired after 14s at ice-exchanged")
+                if self.settings.networkMode == .auto && !self.forceIPv4RetryOnce {
+                    self.forceIPv4RetryOnce = true
+                }
+                self.handleTerminalFailure(
+                    message: "ICE 穿透超时（外网 NAT/防火墙阻断直连），请确认已开启内置中继或切换至「仅 IPv4」模式"
+                )
+            }
+            return
+        }
+
         if stage == "connected" {
             disconnectWatchdogTask?.cancel()
             if case .streaming = connectionState { return }
             videoRenderer.markAwaitingFirstFrame()
             connectionState = .connecting("通道已就绪，正在等待首帧画面...")
             requestKeyframe()
+            iceConnectWatchdogTask?.cancel()
+            iceConnectWatchdogTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard let self, !Task.isCancelled, !self.isStoppedByUser else { return }
+                if case .streaming = self.connectionState { return }
+                nanoLogger.info("awaiting first frame (3s) -> nudging keyframe/PLI")
+                self.requestKeyframe()
+
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard !Task.isCancelled, !self.isStoppedByUser else { return }
+                if case .streaming = self.connectionState { return }
+                nanoLogger.info("awaiting first frame (6s) -> nudging keyframe/PLI")
+                self.requestKeyframe()
+
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                guard !Task.isCancelled, !self.isStoppedByUser else { return }
+                if case .streaming = self.connectionState { return }
+                nanoLogger.warning("first frame watchdog fired after 10s at connected")
+                self.handleTerminalFailure(message: "连接已建立但长时间未收到视频首帧，正在重连...")
+            }
             return
         }
 
         if stage == "disconnected" {
+            iceConnectWatchdogTask?.cancel()
+            iceConnectWatchdogTask = nil
             videoRenderer.markAwaitingFirstFrame()
             connectionState = .connecting("网络短暂波动，正在恢复...")
             disconnectWatchdogTask?.cancel()
@@ -815,6 +877,8 @@ final class NanoStreamSession: ObservableObject {
         }
 
         if terminal || stage == "failed" || stage == "closed" {
+            iceConnectWatchdogTask?.cancel()
+            iceConnectWatchdogTask = nil
             handleTerminalFailure(message: message.isEmpty ? "串流会话已断开" : message)
             return
         }
@@ -827,6 +891,8 @@ final class NanoStreamSession: ObservableObject {
 
     private func handleTerminalFailure(message: String) {
         guard !isStoppedByUser else { return }
+        iceConnectWatchdogTask?.cancel()
+        iceConnectWatchdogTask = nil
         disconnectWatchdogTask?.cancel()
         gamepadManager.haptics.stopAll()
 

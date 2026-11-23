@@ -459,9 +459,11 @@ impl RealNanoPeerConnection {
                                     .skip_while(|t| *t != "typ")
                                     .nth(1)
                                     .unwrap_or("?");
+                                let family = candidate_ip_family(&text.candidate);
                                 crate::nano_log!(
-                                    "local ice candidate gathered typ={} mid={} mline={}",
+                                    "local ice candidate gathered typ={} family={} mid={} mline={}",
                                     typ,
+                                    family,
                                     text.sdp_mid,
                                     text.sdp_mline_index
                                 );
@@ -469,6 +471,13 @@ impl RealNanoPeerConnection {
                             }
                         }
                     }
+                })
+            }));
+
+        self.pc
+            .on_ice_connection_state_change(Box::new(move |state| {
+                Box::pin(async move {
+                    crate::nano_log!("ice state={state:?}");
                 })
             }));
 
@@ -709,7 +718,7 @@ impl RealNanoPeerConnection {
         // Wait for local host + STUN srflx (and TURN relay when custom/builtin ICE is enabled)
         // so WAN hole-punching candidates are never truncated prematurely, while still capping
         // wait at 2.4s once any candidate exists (or 3.5s absolute ceiling).
-        while started.elapsed() < Duration::from_millis(3500) {
+        while started.elapsed() < Duration::from_millis(3800) {
             sleep(Duration::from_millis(100)).await;
             let candidates = self.shared.local_candidates();
             let count = candidates.len();
@@ -725,14 +734,17 @@ impl RealNanoPeerConnection {
                 }
                 let elapsed = started.elapsed();
                 let ready_for_early_exit = if self.shared.has_custom_ice {
-                    (has_srflx && has_relay) || elapsed >= Duration::from_millis(900)
+                    // On 4G/5G cellular, DNS + 2-RTT TURN Allocate can take 1.0-2.0s;
+                    // exit immediately once both srflx and relay are gathered, otherwise
+                    // wait up to 2.2s before allowing early exit without relay.
+                    (has_srflx && has_relay) || elapsed >= Duration::from_millis(2200)
                 } else {
-                    has_srflx || elapsed >= Duration::from_millis(500)
+                    has_srflx || elapsed >= Duration::from_millis(600)
                 };
                 if count == last_count {
                     stable_count += 1;
                     if (ready_for_early_exit && stable_count >= 3)
-                        || elapsed >= Duration::from_millis(2400)
+                        || elapsed >= Duration::from_millis(3000)
                     {
                         break;
                     }
@@ -756,8 +768,38 @@ impl RealNanoPeerConnection {
     }
 
     pub async fn drain_local_candidates(&self) -> Result<Vec<IceCandidate>, NanoError> {
-        let candidates = self.shared.local_candidates();
-        crate::nano_log!("drain local candidates count={}", candidates.len());
+        let mut candidates = self.shared.local_candidates();
+        if self.shared.has_custom_ice
+            && !candidates.iter().any(|c| c.candidate.contains(" typ relay"))
+        {
+            // Give slow cellular TURN allocations a brief final window before POST /ice.
+            for _ in 0..5 {
+                sleep(Duration::from_millis(100)).await;
+                candidates = self.shared.local_candidates();
+                if candidates.iter().any(|c| c.candidate.contains(" typ relay")) {
+                    break;
+                }
+            }
+        }
+        let mut host_cnt = 0usize;
+        let mut srflx_cnt = 0usize;
+        let mut relay_cnt = 0usize;
+        for c in &candidates {
+            if c.candidate.contains(" typ relay") {
+                relay_cnt += 1;
+            } else if c.candidate.contains(" typ srflx") {
+                srflx_cnt += 1;
+            } else if c.candidate.contains(" typ host") {
+                host_cnt += 1;
+            }
+        }
+        crate::nano_log!(
+            "drain local candidates count={} host={} srflx={} relay={}",
+            candidates.len(),
+            host_cnt,
+            srflx_cnt,
+            relay_cnt
+        );
         Ok(candidates)
     }
 
@@ -770,14 +812,31 @@ impl RealNanoPeerConnection {
             );
             return Ok(());
         }
+        let normalized = normalize_remote_candidate_line(&candidate.candidate);
+        let typ = normalized
+            .split_whitespace()
+            .skip_while(|t| *t != "typ")
+            .nth(1)
+            .unwrap_or("?");
+        let family = candidate_ip_family(&normalized);
         crate::nano_log!(
-            "add remote candidate mid={} mline={}",
+            "add remote candidate typ={} family={} mid={} mline={}",
+            typ,
+            family,
             candidate.sdp_mid,
             candidate.sdp_mline_index
         );
+        let sdp_mid = {
+            let trimmed = candidate.sdp_mid.trim();
+            if trimmed.is_empty() {
+                "0".to_owned()
+            } else {
+                trimmed.to_owned()
+            }
+        };
         let init = RTCIceCandidateInit {
-            candidate: candidate.candidate.clone(),
-            sdp_mid: Some(candidate.sdp_mid.clone()),
+            candidate: normalized,
+            sdp_mid: Some(sdp_mid),
             sdp_mline_index: Some(candidate.sdp_mline_index.parse::<u16>().unwrap_or(0)),
             username_fragment: None,
         };
@@ -1172,7 +1231,7 @@ fn build_api(
     // measures true end-to-end network RTT on the active WMM AC_VI media socket.
     setting_engine.set_ice_timeouts(
         Some(Duration::from_secs(5)),
-        Some(Duration::from_secs(25)),
+        Some(Duration::from_secs(12)),
         Some(Duration::from_secs(1)),
     );
 
@@ -2276,6 +2335,42 @@ fn to_rtc_ice_server(server: &crate::protocol::IceServer) -> RTCIceServer {
     }
 }
 
+fn normalize_remote_candidate_line(raw: &str) -> String {
+    let trimmed = raw.trim();
+    trimmed.strip_prefix("a=").unwrap_or(trimmed).to_owned()
+}
+
+fn candidate_ip_family(candidate_line: &str) -> &'static str {
+    let normalized = candidate_line
+        .trim()
+        .strip_prefix("a=")
+        .unwrap_or(candidate_line.trim());
+    let Some(ip_str) = normalized.split_whitespace().nth(4) else {
+        return "unknown";
+    };
+    let clean_ip = ip_str.split('%').next().unwrap_or(ip_str);
+    match clean_ip.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(v4)) => {
+            if v4.is_private() || v4.is_link_local() || v4.is_loopback() {
+                "v4-priv"
+            } else {
+                "v4-pub"
+            }
+        }
+        Ok(std::net::IpAddr::V6(v6)) => {
+            let seg = v6.segments();
+            if seg[0] == 0x2001 && seg[1] == 0x0000 {
+                "v6-teredo"
+            } else if (seg[0] & 0xffc0) == 0xfe80 || (seg[0] & 0xfe00) == 0xfc00 {
+                "v6-local"
+            } else {
+                "v6-pub"
+            }
+        }
+        Err(_) => "host",
+    }
+}
+
 fn candidate_to_protocol_candidate(init: &RTCIceCandidateInit) -> Option<IceCandidate> {
     let candidate = init.candidate.trim();
     if candidate.is_empty() || candidate == "a=end-of-candidates" {
@@ -2284,9 +2379,20 @@ fn candidate_to_protocol_candidate(init: &RTCIceCandidateInit) -> Option<IceCand
     if candidate.contains("UDP") && candidate.contains("tcptype") {
         return None;
     }
+    // webrtc-rs 0.17.x hardcodes `sdp_mid: Some("")` in `RTCIceCandidate::to_json()`.
+    // Xbox's WebRTC stack rejects or ignores candidates whose `sdpMid` doesn't match the
+    // offer's bundled `a=mid:0`, which silently breaks WAN STUN/TURN hole-punching while
+    // LAN still works via peer-reflexive (`prflx`) packets. Always normalize blank mid -> "0".
+    let sdp_mid = init
+        .sdp_mid
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("0")
+        .to_owned();
     Some(IceCandidate::new(
         candidate.to_owned(),
-        init.sdp_mid.clone().unwrap_or_else(|| "0".to_owned()),
+        sdp_mid,
         init.sdp_mline_index.unwrap_or(0) as u32,
     ))
 }
@@ -3012,5 +3118,38 @@ mod tests {
         assert!(boosted.contains("x-google-min-bitrate=10000"));
         assert!(boosted.contains("x-google-start-bitrate=20000"));
         assert!(boosted.contains("x-google-max-bitrate=40000"));
+    }
+
+    #[test]
+    fn candidate_to_protocol_normalizes_empty_sdp_mid_and_remote_a_prefix() {
+        let init_empty_mid = RTCIceCandidateInit {
+            candidate: "candidate:123 1 udp 16777215 1.2.3.4 49152 typ relay raddr 0.0.0.0 rport 54321".to_owned(),
+            sdp_mid: Some(String::new()),
+            sdp_mline_index: Some(0),
+            username_fragment: None,
+        };
+        let converted = candidate_to_protocol_candidate(&init_empty_mid).expect("valid relay");
+        assert_eq!(converted.sdp_mid, "0");
+        assert_eq!(converted.sdp_mline_index, "0");
+        assert_eq!(candidate_ip_family(&converted.candidate), "v4-pub");
+
+        let init_explicit_mid = RTCIceCandidateInit {
+            candidate: "candidate:456 1 udp 2122260223 192.168.31.198 9002 typ host".to_owned(),
+            sdp_mid: Some("1".to_owned()),
+            sdp_mline_index: Some(1),
+            username_fragment: None,
+        };
+        let converted2 = candidate_to_protocol_candidate(&init_explicit_mid).expect("valid host");
+        assert_eq!(converted2.sdp_mid, "1");
+        assert_eq!(candidate_ip_family(&converted2.candidate), "v4-priv");
+
+        assert_eq!(
+            normalize_remote_candidate_line("a=candidate:1 1 UDP 100 2001:0:4136:e378:8000:63bf:3fff:fdd2 9002 typ host "),
+            "candidate:1 1 UDP 100 2001:0:4136:e378:8000:63bf:3fff:fdd2 9002 typ host"
+        );
+        assert_eq!(
+            candidate_ip_family("a=candidate:1 1 UDP 100 2001:0:4136:e378:8000:63bf:3fff:fdd2 9002 typ host "),
+            "v6-teredo"
+        );
     }
 }
