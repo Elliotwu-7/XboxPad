@@ -830,12 +830,36 @@ final class NanoStreamSession: ObservableObject {
         disconnectWatchdogTask?.cancel()
         gamepadManager.haptics.stopAll()
 
+        let lowerMsg = message.lowercased()
+        let isWnsWakeFailure = target.isHome
+            && (lowerMsg.contains("errorcallingwns") || lowerMsg.contains("waitingforservertoregister"))
+        if isWnsWakeFailure {
+            // Bypass cloud WNS outage by blasting local LAN SmartGlass UDP 5050 Power-On + XCCS WakeUp
+            XboxHomeAPI.sendLocalSmartGlassWakeUp(liveId: target.sessionId)
+            Task { [authService, target, settings] in
+                if let snapshot = try? await authService.getValidSessionSnapshot(
+                    forceRefresh: false,
+                    forceRegionIP: settings.forceRegionIP
+                ) {
+                    try? await XboxHomeAPI.sendPowerCommand(
+                        consoleId: target.sessionId,
+                        wakeUp: true,
+                        webToken: snapshot.webToken
+                    )
+                }
+            }
+        }
+
+        let displayMessage: String = isWnsWakeFailure
+            ? "微软云端 WNS 唤醒主机失败（主机可能已关机或待机假死），已自动补发局域网 UDP 5050 唤醒包。若持续失败，请确认 Xbox 电源模式为「睡眠」或重启主机。"
+            : message
+
         if settings.autoReconnect && reconnectAttempt < maxReconnectAttempts {
             reconnectAttempt += 1
-            let delaySec = min(1.5 * Double(reconnectAttempt), 5.0)
+            let delaySec = isWnsWakeFailure ? min(4.0 * Double(reconnectAttempt), 10.0) : min(1.5 * Double(reconnectAttempt), 5.0)
             connectionState = .reconnecting(
                 reconnectAttempt,
-                "\(message)，\(Int(delaySec.rounded())) 秒后自动重连 (\(reconnectAttempt)/\(maxReconnectAttempts))..."
+                "\(displayMessage)\n\(Int(delaySec.rounded())) 秒后自动重连 (\(reconnectAttempt)/\(maxReconnectAttempts))..."
             )
             teardownRustHandleOnly()
             reconnectTask?.cancel()
@@ -846,7 +870,7 @@ final class NanoStreamSession: ObservableObject {
                 await self.connectOnce(forceTokenRefresh: self.reconnectAttempt >= 2)
             }
         } else {
-            connectionState = .failed(message)
+            connectionState = .failed(displayMessage)
         }
     }
 

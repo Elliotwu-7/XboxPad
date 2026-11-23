@@ -262,6 +262,9 @@ final class AppState: ObservableObject {
     }
 
     func wakeConsole(_ console: XboxConsole, thenStream: Bool) async {
+        // Always fire local LAN SmartGlass UDP 5050 wake-on packet (bypasses cloud WNS outages)
+        XboxHomeAPI.sendLocalSmartGlassWakeUp(liveId: console.serverId)
+
         if thenStream {
             // Immediately launch stream (Xbox /v5/sessions/home/play natively wakes ConnectedStandby consoles)
             // while firing XCCS WakeUp best-effort in parallel so xccs errors never block streaming.
@@ -291,11 +294,11 @@ final class AppState: ObservableObject {
                 wakeUp: true,
                 webToken: snapshot.webToken
             )
-            showToast("已向 \(console.deviceName) 发送唤醒指令")
+            showToast("已向 \(console.deviceName) 发送云端 + 局域网双路唤醒指令")
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             await refreshConsoles()
         } catch {
-            showToast("唤醒失败：\(error.localizedDescription)")
+            showToast("已发送局域网唤醒包（云端唤醒报错：\(error.localizedDescription)）")
         }
     }
 
@@ -463,5 +466,10 @@ final class AppState: ObservableObject {
             startNearbyAuthSyncAdvertiser()
         }
         _ = await (consolesTask, cloudTask)
+        if ProcessInfo.processInfo.arguments.contains("--wake-lan") {
+            for console in consoles {
+                await wakeConsole(console, thenStream: false)
+            }
+        }
     }
 }
