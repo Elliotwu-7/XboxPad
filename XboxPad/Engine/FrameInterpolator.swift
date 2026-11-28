@@ -38,6 +38,7 @@ final class MetalOpticalFlowEngine {
     private var flowCoarseBwd: MTLTexture?
     private var flowFine: MTLTexture?
     private var flowSmooth: MTLTexture?
+    private var cachedPairSerial: UInt64 = 0
 
     private(set) var isReady: Bool = false
 
@@ -347,6 +348,7 @@ final class MetalOpticalFlowEngine {
             && flowCoarseFwd != nil && flowCoarseBwd != nil && flowFine != nil && flowSmooth != nil {
             texWidth = width
             texHeight = height
+            cachedPairSerial = 0
             return true
         }
         return false
@@ -371,11 +373,13 @@ final class MetalOpticalFlowEngine {
     }
 
     /// Encode bidirectional optical-flow estimation directly into `commandBuffer`.
+    /// Reuses the cached `flowSmooth` texture when multiple fractional phases share the same `pairSerial`.
     /// Returns the smoothed normalized UV motion vector texture (`rgba16Float`: xy=mv, z=confidence).
     func encodeOpticalFlow(
         commandBuffer: MTLCommandBuffer,
         prevY: MTLTexture,
-        currY: MTLTexture
+        currY: MTLTexture,
+        pairSerial: UInt64 = 0
     ) -> MTLTexture? {
         guard isReady,
               let downsamplePSO,
@@ -384,8 +388,15 @@ final class MetalOpticalFlowEngine {
               let smoothFlowPSO,
               ensureTextures(width: currY.width, height: currY.height),
               let prevL1, let currL1, let prevL2, let currL2,
-              let flowCoarseFwd, let flowCoarseBwd, let flowFine, let flowSmooth,
-              let enc = commandBuffer.makeComputeCommandEncoder() else {
+              let flowCoarseFwd, let flowCoarseBwd, let flowFine, let flowSmooth else {
+            return nil
+        }
+
+        if pairSerial != 0 && pairSerial == cachedPairSerial {
+            return flowSmooth
+        }
+
+        guard let enc = commandBuffer.makeComputeCommandEncoder() else {
             return nil
         }
 
@@ -432,12 +443,14 @@ final class MetalOpticalFlowEngine {
         dispatch2D(encoder: enc, pso: smoothFlowPSO, width: flowSmooth.width, height: flowSmooth.height)
 
         enc.endEncoding()
+        cachedPairSerial = pairSerial
         return flowSmooth
     }
 
     func reset() {
         texWidth = 0
         texHeight = 0
+        cachedPairSerial = 0
         prevL1 = nil
         currL1 = nil
         prevL2 = nil
