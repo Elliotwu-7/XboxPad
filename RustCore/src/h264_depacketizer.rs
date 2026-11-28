@@ -411,9 +411,11 @@ impl LowLatencyH264Assembler {
             let oldest_age = now.duration_since(self.frames[0].first_arrival);
             let max_queued_frames =
                 ((self.max_reorder_wait.as_millis() as usize / 16) + 3).clamp(8, 20);
+            let solo_stall_limit = (self.max_reorder_wait + Duration::from_millis(50))
+                .min(Duration::from_millis(280));
             if self.frames.len() >= max_queued_frames
                 || (newer_complete && oldest_age >= self.max_reorder_wait)
-                || oldest_age >= self.max_reorder_wait * 2
+                || oldest_age >= solo_stall_limit
             {
                 let frame = self.frames.remove(0);
                 let (au, end_seq) = frame.assemble(

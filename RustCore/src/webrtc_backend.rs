@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -21,10 +21,8 @@ use webrtc::ice::udp_mux::{UDPMux, UDPMuxDefault, UDPMuxParams};
 use webrtc::ice::udp_network::UDPNetwork;
 use webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
 use webrtc::ice_transport::ice_server::RTCIceServer;
-use webrtc::interceptor::nack::generator::Generator as NackGenerator;
 use webrtc::interceptor::nack::responder::Responder as NackResponder;
 use webrtc::interceptor::registry::Registry;
-use webrtc::interceptor::report::receiver::ReceiverReport;
 use webrtc::interceptor::report::sender::SenderReport;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
@@ -33,6 +31,7 @@ use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::rtp_transceiver::rtp_codec::{
     RTCRtpCodecCapability, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RTPCodecType,
 };
+use webrtc::rtp_transceiver::rtp_receiver::RTCRtpReceiver;
 use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
 use webrtc::rtp_transceiver::{RTCPFeedback, RTCRtpTransceiverInit, TYPE_RTCP_FB_TRANSPORT_CC};
 use webrtc::sdp::extmap::TRANSPORT_CC_URI;
@@ -50,6 +49,7 @@ use crate::channels::{
     InputPacket, KeyboardFrame, MessageHandshake, MetadataFrame, MouseFrame,
 };
 use crate::error::NanoError;
+use crate::fast_rtcp::{AccurateReceiverReportBuilder, SmartNackGeneratorBuilder};
 use crate::fast_twcc::FastTwccReceiverBuilder;
 use crate::h264_depacketizer::LowLatencyH264Assembler;
 use crate::protocol::{
@@ -62,7 +62,7 @@ use crate::video_sink::VideoFrameSink;
 
 const CONTROL_ACCESS_KEY: &str = "4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E";
 const PROCESSED_FRAME_FEEDBACK_DECODE_MS: u32 = 10;
-const VIDEO_PLI_REQUEST_MIN_INTERVAL: Duration = Duration::from_millis(450);
+const VIDEO_PLI_REQUEST_MIN_INTERVAL: Duration = Duration::from_millis(380);
 const DEFAULT_VIDEO_RTP_SAMPLE_MAX_DELAY_MS: u64 = 80;
 const REMB_TARGET_BITRATE_BPS: f32 = 40_000_000.0;
 
@@ -82,12 +82,16 @@ struct PeerSharedState {
     video_packets_lost: AtomicU64,
     video_frames_received: AtomicU64,
     video_frames_dropped: AtomicU64,
-    video_jitter_us: AtomicU64,
+    video_jitter_us: Arc<AtomicU64>,
     stun_rtt_us: Arc<AtomicU64>,
     stun_req_count: Arc<AtomicU64>,
     stun_resp_count: Arc<AtomicU64>,
     probe_rtt_us: Arc<AtomicU64>,
+    nack_rtt_us: Arc<AtomicU64>,
+    route_kind: Arc<AtomicU8>,
     is_true_lan: AtomicBool,
+    remb_current_bps: AtomicU64,
+    remb_sender_ssrc: u32,
     tuned_local_sig: AtomicU64,
     last_selected_pair: Mutex<String>,
     probe_target: Mutex<Option<(SocketAddr, bool)>>,
@@ -108,6 +112,7 @@ impl PeerSharedState {
         max_video_delay_ms: u64,
         max_video_bitrate_kbps: u32,
     ) -> Self {
+        let remb_sender_ssrc = ((Instant::now().elapsed().as_nanos() as u32) ^ 0x6C4E_3A91).max(1);
         Self {
             local_candidates: Mutex::new(Vec::new()),
             observed_tracks: Mutex::new(Vec::new()),
@@ -123,12 +128,16 @@ impl PeerSharedState {
             video_packets_lost: AtomicU64::new(0),
             video_frames_received: AtomicU64::new(0),
             video_frames_dropped: AtomicU64::new(0),
-            video_jitter_us: AtomicU64::new(0),
+            video_jitter_us: Arc::new(AtomicU64::new(0)),
             stun_rtt_us: Arc::new(AtomicU64::new(0)),
             stun_req_count: Arc::new(AtomicU64::new(0)),
             stun_resp_count: Arc::new(AtomicU64::new(0)),
             probe_rtt_us: Arc::new(AtomicU64::new(0)),
+            nack_rtt_us: Arc::new(AtomicU64::new(0)),
+            route_kind: Arc::new(AtomicU8::new(0)),
             is_true_lan: AtomicBool::new(false),
+            remb_current_bps: AtomicU64::new(0),
+            remb_sender_ssrc,
             tuned_local_sig: AtomicU64::new(0),
             last_selected_pair: Mutex::new(String::new()),
             probe_target: Mutex::new(None),
@@ -247,6 +256,10 @@ impl RealNanoPeerConnection {
             Arc::clone(&shared.stun_rtt_us),
             Arc::clone(&shared.stun_req_count),
             Arc::clone(&shared.stun_resp_count),
+            Arc::clone(&shared.probe_rtt_us),
+            Arc::clone(&shared.nack_rtt_us),
+            Arc::clone(&shared.route_kind),
+            Arc::clone(&shared.video_jitter_us),
         )?;
         let config = RTCConfiguration {
             ice_servers: plan
@@ -385,7 +398,7 @@ impl RealNanoPeerConnection {
         let video_sink = self.video_sink.as_ref().map(Arc::clone);
         let audio_sink = self.audio_sink.as_ref().map(Arc::clone);
         self.pc.on_track(Box::new(
-            move |track: Arc<TrackRemote>, _receiver, _transceiver| {
+            move |track: Arc<TrackRemote>, receiver: Arc<RTCRtpReceiver>, _transceiver| {
                 let shared = Arc::clone(&shared);
                 let control_channel = control_channel.as_ref().map(Arc::clone);
                 let peer_connection = Arc::clone(&peer_connection);
@@ -405,6 +418,10 @@ impl RealNanoPeerConnection {
                         codec.clock_rate,
                         track.ssrc()
                     );
+                    // Continuously drain inbound RTCP on every receiver so AccurateReceiverReport
+                    // processes Xbox Sender Reports (populating LSR/DLSR for sender-side RTT) and
+                    // the 100KB SRTCP receive buffer never stalls or overflows.
+                    tokio::spawn(run_rtcp_reader(receiver, kind));
                     match kind {
                         MediaTrackKind::Video => {
                             let video_control = control_channel.as_ref().map(Arc::clone);
@@ -683,11 +700,13 @@ impl RealNanoPeerConnection {
         }
         let (min_kbps, start_kbps, max_kbps) = if self.shared.max_video_bitrate_kbps > 0 {
             let max_k = self.shared.max_video_bitrate_kbps.clamp(2_000, 80_000);
-            let start_k = ((max_k as u64 * 7) / 10).clamp(2_000, max_k as u64) as u32;
-            let min_k = (max_k / 4).clamp(1_000, start_k);
+            // Keep start/min bitrate gentle enough not to blow out WAN/TURN queues on frame 1,
+            // while still ramping promptly to `max_k` via clean zero-drift TWCC feedback.
+            let start_k = ((max_k as u64 * 6) / 10).clamp(2_000, 18_000).min(max_k as u64) as u32;
+            let min_k = (max_k / 5).clamp(1_000, 6_000).min(start_k);
             (min_k, start_k, max_k)
         } else {
-            (10_000, 20_000, 40_000)
+            (4_000, 12_000, 40_000)
         };
         server_offer_sdp = boost_video_bitrate_sdp(&server_offer_sdp, min_kbps, start_kbps, max_kbps);
         crate::nano_log!(
@@ -758,7 +777,11 @@ impl RealNanoPeerConnection {
     }
 
     pub async fn set_remote_answer(&self, sdp: &str) -> Result<(), NanoError> {
-        crate::nano_log!("set remote answer len={}", sdp.len());
+        crate::nano_log!(
+            "set remote answer len={} summary={}",
+            sdp.len(),
+            summarize_remote_answer_sdp(sdp)
+        );
         let answer = RTCSessionDescription::answer(sdp.to_owned())
             .map_err(|error| NanoError::PeerConnectionOwned(error.to_string()))?;
         self.pc
@@ -778,6 +801,21 @@ impl RealNanoPeerConnection {
                 candidates = self.shared.local_candidates();
                 if candidates.iter().any(|c| c.candidate.contains(" typ relay")) {
                     break;
+                }
+            }
+        }
+        // Proactively enlarge SO_RCVBUF (4MB) / SO_SNDBUF (1MB) + WMM AC_VI QoS on all gathered
+        // ephemeral UDP sockets (host, STUN srflx rport, TURN relay rport) BEFORE media flows.
+        #[cfg(unix)]
+        {
+            let early_ports = collect_local_udp_ports(0, &candidates);
+            if !early_ports.is_empty() {
+                let tuned = tune_active_udp_sockets_by_ports(&early_ports);
+                if tuned > 0 {
+                    crate::nano_log!(
+                        "proactive udp socket tuning applied sockets={tuned} ports={}",
+                        early_ports.len()
+                    );
                 }
             }
         }
@@ -1006,6 +1044,9 @@ impl RealNanoPeerConnection {
                 _ => 0,
             };
             self.shared
+                .route_kind
+                .store(stats.route_kind, Ordering::Relaxed);
+            self.shared
                 .is_true_lan
                 .store(stats.route_kind == 1, Ordering::Relaxed);
 
@@ -1069,7 +1110,8 @@ impl RealNanoPeerConnection {
 
             let diag_tick = self.shared.rtt_diag_ticks.fetch_add(1, Ordering::Relaxed);
             let have_rtt = self.shared.stun_rtt_us.load(Ordering::Relaxed) > 0
-                || self.shared.probe_rtt_us.load(Ordering::Relaxed) > 0;
+                || self.shared.probe_rtt_us.load(Ordering::Relaxed) > 0
+                || self.shared.nack_rtt_us.load(Ordering::Relaxed) > 0;
             if pair_changed
                 || diag_tick == 0
                 || diag_tick == 3
@@ -1077,27 +1119,23 @@ impl RealNanoPeerConnection {
                 || (!have_rtt && diag_tick % 10 == 0)
             {
                 crate::nano_log!(
-                    "ice selected pair routeKind={} local={} remote={} stunReq={} stunResp={} stunRttUs={} probeRttUs={}",
+                    "ice selected pair routeKind={} local={} remote={} stunReq={} stunResp={} stunRttUs={} probeRttUs={} nackRttUs={}",
                     stats.route_kind,
                     local_str,
                     remote_str,
                     self.shared.stun_req_count.load(Ordering::Relaxed),
                     self.shared.stun_resp_count.load(Ordering::Relaxed),
                     self.shared.stun_rtt_us.load(Ordering::Relaxed),
-                    self.shared.probe_rtt_us.load(Ordering::Relaxed)
+                    self.shared.probe_rtt_us.load(Ordering::Relaxed),
+                    self.shared.nack_rtt_us.load(Ordering::Relaxed)
                 );
             }
         }
 
         if stats.round_trip_time_ms.is_none() {
-            let stun_rtt_us = self.shared.stun_rtt_us.load(Ordering::Relaxed);
-            if stun_rtt_us > 0 {
-                stats.update_rtt(stun_rtt_us as f64 / 1000.0);
-            } else {
-                let probe_rtt_us = self.shared.probe_rtt_us.load(Ordering::Relaxed);
-                if probe_rtt_us > 0 {
-                    stats.update_rtt(probe_rtt_us as f64 / 1000.0);
-                }
+            let best_rtt_us = latest_live_rtt_us(&self.shared);
+            if best_rtt_us > 0 {
+                stats.update_rtt(best_rtt_us as f64 / 1000.0);
             }
         }
 
@@ -1144,36 +1182,53 @@ impl RealNanoPeerConnection {
         baseline.video_packets_received = stats.packets_received;
         baseline.video_packets_lost = stats.packets_lost;
 
-        // Adaptive loss-gated REMB hint for clean LAN and P2P links so Xbox GCC recovers
-        // bitrate briskly after transient wireless jitter without forcing congestion on lossy
-        // or TURN-relayed links.
+        // Smooth loss-aware AIMD REMB ceiling across LAN, WAN P2P, and TURN relay so Xbox GCC
+        // climbs smoothly to full link capacity when clean and backs off gracefully on real loss.
         let video_ssrc = self.shared.video_ssrc.load(Ordering::Relaxed);
-        let live_rtt_ms = stats.round_trip_time_ms.unwrap_or(0.0);
-        let live_loss_pct = stats.packet_loss_pct.unwrap_or(0.0);
-        let custom_cap_bps: Option<f32> = if self.shared.max_video_bitrate_kbps > 0 {
-            Some((self.shared.max_video_bitrate_kbps.clamp(2_000, 80_000) as f32) * 1000.0)
-        } else {
-            None
-        };
-        let remb_target_bps = if video_ssrc != 0 && live_loss_pct < 0.2 {
-            let auto_bps = match stats.route_kind {
-                1 if live_rtt_ms < 30.0 => Some(custom_cap_bps.unwrap_or(REMB_TARGET_BITRATE_BPS)),
-                2 if live_rtt_ms < 50.0 => Some(32_000_000.0),
-                2 if live_rtt_ms < 95.0 => Some(22_000_000.0),
-                _ => custom_cap_bps.filter(|&cap| cap <= 18_000_000.0),
+        if video_ssrc != 0 {
+            let live_rtt_ms = stats.round_trip_time_ms.unwrap_or(0.0);
+            let live_loss_pct = stats.packet_loss_pct.unwrap_or(0.0);
+            let custom_cap_bps: Option<f64> = if self.shared.max_video_bitrate_kbps > 0 {
+                Some(f64::from(self.shared.max_video_bitrate_kbps.clamp(2_000, 80_000)) * 1000.0)
+            } else {
+                None
             };
-            match (auto_bps, custom_cap_bps) {
-                (Some(auto), Some(cap)) => Some(auto.min(cap)),
-                (Some(auto), None) => Some(auto),
-                (None, _) => None,
-            }
-        } else {
-            None
-        };
-        if let Some(target_bps) = remb_target_bps {
+            let target_ceiling_bps = match custom_cap_bps {
+                Some(cap) => cap,
+                None => match stats.route_kind {
+                    1 => f64::from(REMB_TARGET_BITRATE_BPS),
+                    2 if live_rtt_ms > 0.0 && live_rtt_ms < 45.0 => 35_000_000.0,
+                    2 if live_rtt_ms < 95.0 => 26_000_000.0,
+                    2 => 18_000_000.0,
+                    3 => 20_000_000.0,
+                    _ => 24_000_000.0,
+                },
+            };
+            let prev_bps = self.shared.remb_current_bps.load(Ordering::Relaxed) as f64;
+            let current_bps = if prev_bps <= 0.0 {
+                if stats.route_kind == 1 {
+                    target_ceiling_bps
+                } else {
+                    target_ceiling_bps.min(18_000_000.0)
+                }
+            } else {
+                prev_bps
+            };
+            let next_bps = if live_loss_pct < 0.5 {
+                let stepped = (current_bps * 1.15).max(current_bps + 2_000_000.0);
+                stepped.min(target_ceiling_bps)
+            } else if live_loss_pct >= 2.0 {
+                let floor = target_ceiling_bps.min(4_000_000.0);
+                (current_bps * 0.85).max(floor)
+            } else {
+                current_bps.min(target_ceiling_bps)
+            };
+            self.shared
+                .remb_current_bps
+                .store(next_bps.round() as u64, Ordering::Relaxed);
             let remb = ReceiverEstimatedMaximumBitrate {
-                sender_ssrc: 0,
-                bitrate: target_bps,
+                sender_ssrc: self.shared.remb_sender_ssrc,
+                bitrate: next_bps as f32,
                 ssrcs: vec![video_ssrc],
             };
             let _ = self.pc.write_rtcp(&[Box::new(remb)]).await;
@@ -1221,10 +1276,22 @@ fn build_api(
     stun_rtt_us: Arc<AtomicU64>,
     stun_req_count: Arc<AtomicU64>,
     stun_resp_count: Arc<AtomicU64>,
+    probe_rtt_us: Arc<AtomicU64>,
+    nack_rtt_us: Arc<AtomicU64>,
+    route_kind: Arc<AtomicU8>,
+    video_jitter_us: Arc<AtomicU64>,
 ) -> Result<(webrtc::api::API, Option<Arc<UDPMuxDefault>>), NanoError> {
     let mut media_engine = MediaEngine::default();
     register_xbox_codecs(&mut media_engine)?;
-    let registry = register_low_latency_interceptors(Registry::new(), &mut media_engine)?;
+    let registry = register_low_latency_interceptors(
+        Registry::new(),
+        &mut media_engine,
+        Arc::clone(&stun_rtt_us),
+        probe_rtt_us,
+        nack_rtt_us,
+        route_kind,
+        video_jitter_us,
+    )?;
 
     let mut setting_engine = SettingEngine::default();
     // Send ICE STUN keepalive checks every 1s so our STUN RTT tracker continuously
@@ -2120,7 +2187,7 @@ fn tune_active_udp_sockets_by_ports(local_ports: &[u16]) -> usize {
         return 0;
     }
     let mut matched = 0usize;
-    for fd in 3..2048i32 {
+    for fd in 3..4096i32 {
         let mut sock_type: libc::c_int = 0;
         let mut type_len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
         let rc_type = unsafe {
@@ -2248,44 +2315,37 @@ fn register_xbox_codecs(media_engine: &mut MediaEngine) -> Result<(), NanoError>
 }
 
 /// Configure tuned low-latency RTCP interceptors:
-/// - Fast NACK generator (12ms cadence, skip_last_n=2 to ignore Wi-Fi micro-reordering,
-///   128-packet window so dead packets are never re-NACKed for 7 seconds)
-/// - ReceiverReport (500ms) + SenderReport
-/// - Non-blocking FastTwccReceiver (40ms cadence, zero `mpsc::channel(1)` read_rtp stalls)
+/// - RTT-aware SmartNackGenerator (15ms poll, per-packet RTT cooldown, 4-retry cap, passive NACK RTT)
+/// - AccurateReceiverReport (RFC 3550 4096-bit dedup without 128-bit loss amplification + SR LSR/DLSR)
+/// - SenderReport + NackResponder
+/// - Zero-drift, reorder-safe FastTwccReceiver (35ms cadence + 64-pkt burst flush)
 fn register_low_latency_interceptors(
     mut registry: Registry,
     media_engine: &mut MediaEngine,
+    stun_rtt_us: Arc<AtomicU64>,
+    probe_rtt_us: Arc<AtomicU64>,
+    nack_rtt_us: Arc<AtomicU64>,
+    route_kind: Arc<AtomicU8>,
+    video_jitter_us: Arc<AtomicU64>,
 ) -> Result<Registry, NanoError> {
-    // 1. NACK
-    media_engine.register_feedback(
-        RTCPFeedback {
-            typ: "nack".to_owned(),
-            parameter: "".to_owned(),
-        },
-        RTPCodecType::Video,
-    );
-    media_engine.register_feedback(
-        RTCPFeedback {
-            typ: "nack".to_owned(),
-            parameter: "pli".to_owned(),
-        },
-        RTPCodecType::Video,
-    );
+    // 1. NACK (feedback attributes already registered on H.264 codecs in register_xbox_codecs)
     registry.add(Box::new(NackResponder::builder()));
-    registry.add(Box::new(
-        NackGenerator::builder()
-            .with_interval(Duration::from_millis(12))
-            .with_skip_last_n(2)
-            .with_log2_size_minus_6(2), // 256 packets (~200-500ms window for both LAN & WAN BDP)
-    ));
+    registry.add(Box::new(SmartNackGeneratorBuilder::new(
+        Duration::from_millis(15),
+        stun_rtt_us,
+        probe_rtt_us,
+        nack_rtt_us,
+        route_kind,
+        video_jitter_us,
+    )));
 
-    // 2. RTCP Receiver / Sender Reports
-    registry.add(Box::new(
-        ReceiverReport::builder().with_interval(Duration::from_millis(500)),
-    ));
+    // 2. Accurate RTCP Receiver Report (500ms) + Sender Report
+    registry.add(Box::new(AccurateReceiverReportBuilder::new(
+        Duration::from_millis(500),
+    )));
     registry.add(Box::new(SenderReport::builder()));
 
-    // 3. Non-blocking TWCC Receiver (40ms)
+    // 3. Zero-drift, reorder-safe TWCC Receiver (35ms + 64-packet burst flush)
     media_engine.register_feedback(
         RTCPFeedback {
             typ: TYPE_RTCP_FB_TRANSPORT_CC.to_owned(),
@@ -2321,7 +2381,7 @@ fn register_low_latency_interceptors(
         .map_err(|error| NanoError::PeerConnectionOwned(error.to_string()))?;
 
     registry.add(Box::new(FastTwccReceiverBuilder::new(
-        Duration::from_millis(25),
+        Duration::from_millis(35),
     )));
 
     Ok(registry)
@@ -2679,6 +2739,7 @@ async fn run_low_latency_video_track(
                             base_reorder_wait_ms,
                             live_rtt_us,
                             jitter_est_us.round() as u64,
+                            shared.route_kind.load(Ordering::Relaxed),
                         );
                         if target_wait_ms != current_reorder_wait_ms {
                             current_reorder_wait_ms = target_wait_ms;
@@ -2723,6 +2784,7 @@ async fn run_low_latency_video_track(
                     base_reorder_wait_ms,
                     live_rtt_us,
                     jitter_est_us.round() as u64,
+                    shared.route_kind.load(Ordering::Relaxed),
                 );
                 if target_wait_ms != current_reorder_wait_ms {
                     current_reorder_wait_ms = target_wait_ms;
@@ -2755,11 +2817,16 @@ async fn run_low_latency_video_track(
                         h264_nal_summary(&au.data)
                     );
                 }
-                // Still pass SPS/PPS so the hardware decoder caches updated parameters
+                // Pass ONLY clean SPS/PPS parameter sets (never corrupted slice NALs) so
+                // VideoToolbox updates its format description without throwing decode errors
+                // or triggering duplicate keyframe storms.
                 if au.has_param_sets {
-                    let base_timestamp = first_timestamp.get_or_insert(au.rtp_timestamp);
-                    let pts_us = rtp_timestamp_to_us(au.rtp_timestamp, *base_timestamp, clock_rate);
-                    video_sink.push_h264_access_unit(&au.data, pts_us, false);
+                    let param_only = extract_sps_pps_annex_b(&au.data);
+                    if !param_only.is_empty() {
+                        let base_timestamp = first_timestamp.get_or_insert(au.rtp_timestamp);
+                        let pts_us = rtp_timestamp_to_us(au.rtp_timestamp, *base_timestamp, clock_rate);
+                        video_sink.push_h264_access_unit(&param_only, pts_us, false);
+                    }
                 }
                 observed_keyframe = false;
                 waiting_clean_keyframe_since.get_or_insert_with(Instant::now);
@@ -2781,9 +2848,12 @@ async fn run_low_latency_video_track(
 
             if !observed_keyframe && !keyframe {
                 if au.has_param_sets {
-                    let base_timestamp = first_timestamp.get_or_insert(au.rtp_timestamp);
-                    let pts_us = rtp_timestamp_to_us(au.rtp_timestamp, *base_timestamp, clock_rate);
-                    video_sink.push_h264_access_unit(&au.data, pts_us, false);
+                    let param_only = extract_sps_pps_annex_b(&au.data);
+                    if !param_only.is_empty() {
+                        let base_timestamp = first_timestamp.get_or_insert(au.rtp_timestamp);
+                        let pts_us = rtp_timestamp_to_us(au.rtp_timestamp, *base_timestamp, clock_rate);
+                        video_sink.push_h264_access_unit(&param_only, pts_us, false);
+                    }
                 }
                 waiting_clean_keyframe_since.get_or_insert_with(Instant::now);
                 request_video_pli_throttled(
@@ -2835,27 +2905,137 @@ async fn run_low_latency_video_track(
     crate::nano_warn!("video track reader stopped mode=zero-wait-marker frames={frames}");
 }
 
+async fn run_rtcp_reader(receiver: Arc<RTCRtpReceiver>, kind: MediaTrackKind) {
+    let mut packets = 0u64;
+    loop {
+        match receiver.read_rtcp().await {
+            Ok((rtcp_pkts, _)) => {
+                packets += rtcp_pkts.len() as u64;
+                if packets == rtcp_pkts.len() as u64 && packets > 0 {
+                    crate::nano_log!("inbound rtcp active kind={kind:?} firstBatch={packets}");
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    crate::nano_log!("inbound rtcp reader stopped kind={kind:?} totalPackets={packets}");
+}
+
+fn summarize_remote_answer_sdp(sdp: &str) -> String {
+    let mut in_video = false;
+    let mut fmt_line = String::new();
+    let mut has_twcc = false;
+    let mut has_remb = false;
+    let mut has_nack = false;
+    let mut has_rtx = false;
+    let mut b_as = String::new();
+
+    for raw_line in sdp.lines() {
+        let line = raw_line.trim();
+        if line.starts_with("m=video ") {
+            in_video = true;
+            fmt_line = line.to_owned();
+            continue;
+        }
+        if line.starts_with("m=") {
+            in_video = false;
+            continue;
+        }
+        if !in_video {
+            continue;
+        }
+        if line.contains("transport-wide-cc") || line.contains("transport-cc") {
+            has_twcc = true;
+        }
+        if line.contains("goog-remb") {
+            has_remb = true;
+        }
+        if line.starts_with("a=rtcp-fb:") && line.contains(" nack") {
+            has_nack = true;
+        }
+        if line.to_ascii_lowercase().contains("rtx/") {
+            has_rtx = true;
+        }
+        if line.starts_with("b=AS:") || line.starts_with("b=TIAS:") {
+            b_as = line.to_owned();
+        }
+    }
+    format!(
+        "video=[{fmt_line}] twcc={has_twcc} remb={has_remb} nack={has_nack} rtx={has_rtx} bw={}",
+        if b_as.is_empty() { "none" } else { &b_as }
+    )
+}
+
+fn extract_sps_pps_annex_b(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    let mut nal_starts: Vec<(usize, usize)> = Vec::new();
+    while i + 3 <= data.len() {
+        if i + 4 <= data.len() && data[i..i + 4] == [0, 0, 0, 1] {
+            nal_starts.push((i, i + 4));
+            i += 4;
+        } else if data[i..i + 3] == [0, 0, 1] {
+            nal_starts.push((i, i + 3));
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    for idx in 0..nal_starts.len() {
+        let (_, payload_start) = nal_starts[idx];
+        let payload_end = if idx + 1 < nal_starts.len() {
+            nal_starts[idx + 1].0
+        } else {
+            data.len()
+        };
+        if payload_start < payload_end {
+            let nal_type = data[payload_start] & 0x1F;
+            if nal_type == 7 || nal_type == 8 {
+                out.extend_from_slice(&[0, 0, 0, 1]);
+                out.extend_from_slice(&data[payload_start..payload_end]);
+            }
+        }
+    }
+    out
+}
+
 fn latest_live_rtt_us(shared: &PeerSharedState) -> u64 {
     let stun = shared.stun_rtt_us.load(Ordering::Relaxed);
     if stun > 0 {
-        stun
-    } else {
-        shared.probe_rtt_us.load(Ordering::Relaxed)
+        return stun;
     }
+    let probe = shared.probe_rtt_us.load(Ordering::Relaxed);
+    if probe > 0 {
+        return probe;
+    }
+    shared.nack_rtt_us.load(Ordering::Relaxed)
 }
 
-/// Compute RTT + jitter-adaptive reorder wait so fast 12ms NACK retransmits (and 45-60ms Apple
+/// Compute RTT + jitter-adaptive reorder wait so SmartNack retransmits (and 45-60ms Apple
 /// AWDL off-channel Wi-Fi hops) finish before a frame is dropped. Complete frames STILL emit at
 /// 0ms immediately on RTP marker; this wait ONLY engages when a packet is actually delayed/missing.
-fn compute_adaptive_reorder_wait_ms(base_ms: u64, live_rtt_us: u64, jitter_us: u64) -> u64 {
-    let floor_ms = base_ms.max(75).min(130);
-    let rtt_ms = live_rtt_us as f64 / 1000.0;
+fn compute_adaptive_reorder_wait_ms(
+    base_ms: u64,
+    live_rtt_us: u64,
+    jitter_us: u64,
+    route_kind: u8,
+) -> u64 {
+    let floor_ms = base_ms.clamp(75, 130);
+    let rtt_ms = if live_rtt_us > 0 {
+        live_rtt_us as f64 / 1000.0
+    } else {
+        match route_kind {
+            2 => 55.0, // WAN P2P fallback before first RTT probe/NACK sample arrives
+            3 => 75.0, // TURN relay fallback
+            _ => 0.0,
+        }
+    };
     let jitter_ms = (jitter_us as f64 / 1000.0).min(45.0);
     if rtt_ms <= 0.0 {
         return floor_ms;
     }
-    let adaptive = (rtt_ms * 1.6 + jitter_ms * 3.0 + 35.0).round() as u64;
-    floor_ms.max(adaptive).clamp(75, 260)
+    let adaptive = (rtt_ms * 1.45 + jitter_ms * 2.5 + 28.0).round() as u64;
+    floor_ms.max(adaptive).clamp(75, 240)
 }
 
 /// Distinguish true LAN (same RFC1918 private IPv4 / link-local / same IPv6 /64 prefix)
@@ -2901,9 +3081,9 @@ async fn request_video_pli_throttled(
     reason: &str,
 ) {
     let rtt_ms = live_rtt_us / 1000;
-    let min_interval = Duration::from_millis((rtt_ms * 4).clamp(
+    let min_interval = Duration::from_millis((rtt_ms * 3).clamp(
         VIDEO_PLI_REQUEST_MIN_INTERVAL.as_millis() as u64,
-        1200,
+        900,
     ));
     let now = Instant::now();
     if last_request
@@ -3077,12 +3257,16 @@ mod tests {
     #[test]
     fn adaptive_reorder_wait_and_lan_subnet_detection() {
         // LAN keeps at least 75ms floor so 45-60ms AWDL off-channel pauses never drop intact frames
-        assert_eq!(compute_adaptive_reorder_wait_ms(65, 4_000, 1_000), 75);
-        assert_eq!(compute_adaptive_reorder_wait_ms(80, 4_000, 1_000), 80);
-        // Moderate WAN (70ms RTT + 5ms jitter) -> 70*1.6 + 5*3 + 35 = 162ms
-        assert_eq!(compute_adaptive_reorder_wait_ms(65, 70_000, 5_000), 162);
-        // High-RTT WAN clamps cleanly at 260ms ceiling
-        assert_eq!(compute_adaptive_reorder_wait_ms(65, 160_000, 15_000), 260);
+        assert_eq!(compute_adaptive_reorder_wait_ms(65, 4_000, 1_000, 1), 75);
+        assert_eq!(compute_adaptive_reorder_wait_ms(80, 4_000, 1_000, 1), 80);
+        // Moderate WAN (70ms RTT + 5ms jitter) -> 70*1.45 + 5*2.5 + 28 = 142ms
+        assert_eq!(compute_adaptive_reorder_wait_ms(65, 70_000, 5_000, 2), 142);
+        // WAN P2P with unknown RTT falls back to 55ms estimate -> 55*1.45 + 28 = 108ms
+        assert_eq!(compute_adaptive_reorder_wait_ms(65, 0, 0, 2), 108);
+        // TURN relay with unknown RTT falls back to 75ms estimate -> 75*1.45 + 28 = 137ms
+        assert_eq!(compute_adaptive_reorder_wait_ms(65, 0, 0, 3), 137);
+        // High-RTT WAN clamps cleanly at 240ms ceiling
+        assert_eq!(compute_adaptive_reorder_wait_ms(65, 160_000, 15_000, 2), 240);
         assert!(are_same_lan_subnet(
             "2408:8276:b1a:9360:cc44:30c0:9f6f:58d0",
             "2408:8276:b1a:9360:541d:440e:4e30:5620"
@@ -3092,6 +3276,17 @@ mod tests {
             "2408:8276:b1a:9360:541d:440e:4e30:5620"
         ));
         assert!(are_same_lan_subnet("192.168.31.50", "192.168.31.198"));
+
+        // Verify SPS/PPS extraction strips corrupted slice NALs cleanly
+        let mixed = vec![
+            0, 0, 0, 1, 0x67, 0x64, 0x00, 0x2A, // SPS
+            0, 0, 0, 1, 0x68, 0xEE, 0x3C,       // PPS
+            0, 0, 0, 1, 0x65, 0x88, 0x99,       // Corrupted IDR slice (must be stripped!)
+        ];
+        assert_eq!(
+            extract_sps_pps_annex_b(&mixed),
+            vec![0, 0, 0, 1, 0x67, 0x64, 0x00, 0x2A, 0, 0, 0, 1, 0x68, 0xEE, 0x3C]
+        );
     }
 
     #[cfg(unix)]

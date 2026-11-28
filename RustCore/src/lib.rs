@@ -4,6 +4,7 @@ pub mod backend;
 pub mod channels;
 pub mod connection;
 pub mod error;
+pub mod fast_rtcp;
 pub mod fast_twcc;
 pub mod h264_depacketizer;
 pub mod ios_ffi;
